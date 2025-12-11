@@ -4,6 +4,35 @@
 #include <iostream>
 
 //Classes
+
+class Character {
+private:
+    float hp;
+	float MAX_HP;
+    float speed;
+	float attack;
+public:
+    Character(float o_hp,float o_MAX_HP,float o_speed,float o_attack): hp(o_hp), MAX_HP(o_MAX_HP),speed(o_speed), attack(o_attack) {};
+    
+    virtual void takeDamage(float dmg) {};
+};
+
+class Player : private Character {
+private:
+    float size;
+    int experience;
+    int level;
+
+public:
+    Player(float o_hp, float o_MAX_HP, float o_speed, float o_attack)
+        : Character(o_hp, o_MAX_HP, o_speed, o_attack), experience(0), level(1) {
+    };
+    void gainExperience(int exp) {
+        this->experience += exp;
+        //level up to set
+    }
+};
+
 class Enemy {
 private:
     float size = 20.f;
@@ -21,6 +50,7 @@ public:
         return body;
     };
 };
+
 
 //Functionality
 bool checkColision(const sf::CircleShape& a,const sf::CircleShape& b) {
