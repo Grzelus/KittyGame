@@ -56,11 +56,20 @@ public:
             bulletShape.setPosition(x_position, y_position);
             window.draw(bulletShape);
         }
-    
+    float getX() {
+		return x_position;
+    }
+    float getY() {
+        return y_position;
+    }
 
     float getDamage() const {
         return this->damage;
     }
+    bool operator==(const Bullet& other) const {
+        return (this->x_position == other.x_position) && (this->y_position == other.y_position);
+	}
+
 };
 
 
@@ -407,6 +416,18 @@ int main()
                 ++it;
             }
         }
+        // Enemy Movement (goni¹ gracza)
+        if (active) {
+            for (auto& enemy : enemies) {
+                sf::Vector2f enemyCenter = enemy.getPosition() + sf::Vector2f(enemy.getRadius(), enemy.getRadius());
+                sf::Vector2f direction = playerCenter - enemyCenter;
+                float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                if (length != 0.f) direction /= length;
+                float enemySpeed = 50.f;
+                enemy.move(direction.x * deltaTime * enemySpeed, direction.y * deltaTime * enemySpeed);
+            }
+        }
+
 
 
 		// when the game is over
@@ -416,6 +437,7 @@ int main()
                 int counter = 0;
                 float previous_shot_time = 0.f;
                 // Spawning Enemies
+				enemies.clear();
                 for (int i = 0; i < 10; ++i) {
                     Enemy enemy;
                     enemies.push_back(enemy.spawn());
@@ -428,37 +450,30 @@ int main()
         }
 
 
-		// handling choice of weapon and upgrades
+
+
+
+
+
+        // handling choice of upgrades
         if (weapon_spawned) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1))
-            {   
-				player.setSpeed(player.getSpeed() + 30);
-				counter = 0;
-				weapon_spawned = false;
+            {
+                player.setSpeed(player.getSpeed() + 30);
+                counter = 0;
+                weapon_spawned = false;
             }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2))
             {
-				player.setAttack(player.getAttack() + 1);
+                player.setAttack(player.getAttack() + 1);
                 counter = 0;
                 weapon_spawned = false;
             }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3))
             {
-				player.setMAX_HP(player.getHp() + 10);
+                player.setMAX_HP(player.getHp() + 10);
                 counter = 0;
                 weapon_spawned = false;
-            }
-        }
-
-        // Enemy Movement (goni¹ gracza)
-        if (active) {
-            for (auto& enemy : enemies) {
-                sf::Vector2f enemyCenter = enemy.getPosition() + sf::Vector2f(enemy.getRadius(), enemy.getRadius());
-                sf::Vector2f direction = playerCenter - enemyCenter;
-                float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-                if (length != 0.f) direction /= length;
-                float enemySpeed = 50.f;
-                enemy.move(direction.x * deltaTime * enemySpeed, direction.y * deltaTime * enemySpeed);
             }
         }
 
@@ -491,11 +506,17 @@ int main()
             spawnWeaponChoice(window); 
         }
         if (game_over) spawnGameOver(window);
-		for (auto& b : bullets) {
+        
+        for (auto& b : bullets) {
+            if(b.getX() < 0 || b.getX() > window.getSize().x || b.getY() < 0 || b.getY() > window.getSize().y) {
+				bullets.erase(std::remove(bullets.begin(), bullets.end(), b), bullets.end());
+                continue;
+			}
+		}
+        for (auto& b : bullets) {
             b.update(deltaTime);
             b.renderBody(window);
-		}
-
+        }
         window.display();
     }
 
