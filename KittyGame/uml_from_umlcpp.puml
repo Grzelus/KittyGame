@@ -1,0 +1,46 @@
+@startuml
+left to right direction
+actor "Gracz" as player
+actor "System (Zegar Gry)" as timer
+
+rectangle "Survival Game Loop (10 Minutes)" {
+
+    ' --- Akcje Gracza ---
+    usecase "Przetrwanie (Poruszanie się)" as survive
+    usecase "Zbieranie EXP (Gems)" as collect
+    usecase "Wybór Ulepszenia (Level Up)" as upgrade
+    usecase "Atakowanie (Automatyczne)" as auto_attack
+
+    ' --- Akcje Systemu ---
+    usecase "Zwiększenie fali wrogów" as wave_up
+    usecase "Spawn Bossa (10 min)" as boss_spawn
+    usecase "Koniec Gry (Win/Loss)" as game_over
+    
+    ' --- Szczegóły ---
+    usecase "Nowa Broń" as new_wep
+    usecase "Buff Statystyk" as buff
+}
+
+' --- RELACJE ---
+
+' Gracz
+player --> survive
+player --> collect
+player --> upgrade
+
+' Wybór ulepszenia to albo broń albo staty
+upgrade <|-- new_wep
+upgrade <|-- buff
+
+' Automatyczny atak dzieje się sam podczas przetrwania
+survive ..> auto_attack : <<include>>
+
+' System (Zegar) steruje tempem
+timer --> wave_up : Co minutę
+timer --> boss_spawn : W 10:00
+
+' Skutki działań
+collect ..> upgrade : <<include>> \n(Gdy pasek pełny)
+boss_spawn ..> game_over : <<extend>> \n(Zabicie bossa lub śmierć)
+
+@enduml
