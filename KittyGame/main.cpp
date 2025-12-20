@@ -4,26 +4,30 @@
 #include <iostream>
 
 //Classes
-class Enemy {
+class Enemy : public sf::CircleShape{
 private:
     float size = 20.f;
+    float speed = 50.f;
+ 
 public:
-    Enemy() {};
+    Enemy() : sf::CircleShape(20.f) {
+        this->setFillColor(sf::Color::Red);
+    };
     float getSize() {
         return this->size;
+    }
+        float getSpeed() {
+            return this->speed;
     };
-    sf::CircleShape spawn() {
+    void spawn() {
         float x = rand() % (800 + 1);
         float y = rand() % (600 + 1);
-        sf::CircleShape body(size);
-        body.setFillColor(sf::Color::Red);
-        body.setPosition(x, y);
-        return body;
+        this->setPosition(x, y);
     };
 };
 
 //Functionality
-bool checkColision(const sf::CircleShape& a,const sf::CircleShape& b) {
+bool checkColision(const sf::CircleShape & a, const sf::CircleShape & b) {
     sf::Vector2f aCenter = a.getPosition() + sf::Vector2f(a.getRadius(), a.getRadius());
     sf::Vector2f bCenter = b.getPosition() + sf::Vector2f(b.getRadius(), b.getRadius());
     float dist = std::hypot(aCenter.x - bCenter.x, aCenter.y - bCenter.y);
@@ -42,11 +46,11 @@ int main()
     int counter = 0;
 
     //Spawning Enemies
-    std::vector<sf::CircleShape> enemies;
+    std::vector<Enemy> enemies;
     for (int i = 0; i < 10; i++) {
         Enemy enemy = Enemy();
-        sf::CircleShape enemy_body = enemy.spawn();
-        enemies.push_back(enemy_body);
+        enemy.spawn();
+        enemies.push_back(enemy);
     }
 
    
@@ -106,6 +110,7 @@ int main()
                 enemy++;
             }
         }
+        // Roaming Enemies
         for (auto& enemy : enemies) {
             sf::Vector2f enemyCenter = enemy.getPosition() + sf::Vector2f(enemy.getRadius(), enemy.getRadius());
             sf::Vector2f direction = playerCenter - enemyCenter;
@@ -113,8 +118,7 @@ int main()
             if (length != 0) {
                 direction /= length;
             }
-            float enemySpeed = 50.f;
-            enemy.move(direction.x * deltaTime * enemySpeed, direction.y * deltaTime * enemySpeed);
+            enemy.move(direction.x * deltaTime * enemy.getSpeed(), direction.y * deltaTime * enemy.getSpeed());
         }
         //Rendering
         window.clear();
