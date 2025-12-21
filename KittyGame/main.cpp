@@ -1,10 +1,15 @@
-#include <SFML/Graphics.hpp>
+﻿#include <SFML/Graphics.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
 #include <vector>
 #include <cmath>
 #include <algorithm>
+
+
+//TODO
+
+// balans attack speedu i dodanie jego wizualnej reprezentacji
 
 // Classes
 
@@ -78,9 +83,10 @@ private:
     float MAX_HP;
     float speed;
     float attack;
+    float attack_speed;
 public:
-    Character(float o_hp, float o_MAX_HP, float o_speed, float o_attack)
-        : hp(o_hp), MAX_HP(o_MAX_HP), speed(o_speed), attack(o_attack) {
+    Character(float o_hp, float o_MAX_HP, float o_speed, float o_attack, float attack_speed)
+        : hp(o_hp), MAX_HP(o_MAX_HP), speed(o_speed), attack(o_attack), attack_speed(attack_speed) {
     }
 
     void takedamage(float dmg) { hp -= dmg; }
@@ -88,10 +94,12 @@ public:
     void setMAX_HP(float new_MAX_HP) { this->MAX_HP = new_MAX_HP; }
     void setSpeed(float new_speed) { this->speed = new_speed; }
     void setAttack(float new_attack) { this->attack = new_attack; }
+    void set_attack_speed(float new_attack_speed) { this->attack_speed = new_attack_speed; }
 
     float getHp() const { return hp; }
     float getAttack() const { return attack; }
     float getSpeed() const { return speed; }
+    float get_attack_speed() const { return attack_speed; }
 };
 
 void spawnGameOver(sf::RenderWindow& window);
@@ -103,8 +111,8 @@ private:
     int experience = 0;
     int level = 1;
 public:
-    Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5)
-        : Character(o_hp, o_MAX_HP, o_speed, o_attack),
+    Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5, float attack_speed = 1.f)
+        : Character(o_hp, o_MAX_HP, o_speed, o_attack, attack_speed),
         size(50.f),
         bodyShape(size)
     {
@@ -175,14 +183,15 @@ class Enemy {
 private:
     float size = 20.f;
 public:
+    float x, y;
     sf::CircleShape body;
     Enemy() {
         body = spawn();
     }
-
+    float calculate_spawn_position() {
+        
+    };
     sf::CircleShape spawn() const {
-        float x = static_cast<float>(std::rand() % 750);
-        float y = static_cast<float>(std::rand() % 550);
         sf::CircleShape shape(size);
         shape.setFillColor(sf::Color::Red);
         shape.setPosition(x, y);
@@ -284,7 +293,7 @@ int main()
             player.update(deltaTime, window, active);
 
             previous_shot_time += deltaTime;
-            if (previous_shot_time >= 1.0f) {
+            if (previous_shot_time >= player.get_attack_speed()) {
                 previous_shot_time = 0.f;
                 float angle = player.shooting_angle(window);
                 sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
@@ -297,21 +306,65 @@ int main()
                 return b.getX() < 0 || b.getX() > 800 || b.getY() < 0 || b.getY() > 600;
                 }), bullets.end());
 
-            for (auto it = enemies.begin(); it != enemies.end();) {
-                sf::Vector2f ePos = it->body.getPosition() + sf::Vector2f(it->body.getRadius(), it->body.getRadius());
-                sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
-                sf::Vector2f dir = pPos - ePos;
-                float len = std::hypot(dir.x, dir.y);
-                if (len != 0) it->body.move((dir / len) * 70.f * deltaTime);
+            if (active) {
+                // 1. Ruch przeciwników i kolizja z Graczem
+                for (auto it = enemies.begin(); it != enemies.end();) {
+                    // Obliczanie wektora ruchu w stronę gracza
+                    sf::Vector2f ePos = it->body.getPosition() + sf::Vector2f(it->body.getRadius(), it->body.getRadius());
+                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                    sf::Vector2f dir = pPos - ePos;
+                    float len = std::hypot(dir.x, dir.y);
 
-                if (checkColision(player.getBody(), it->body)) {
-                    it = enemies.erase(it);
-                    score++;
-                    if (player.gainExperience(3)) weapon_spawned = true;
-                    if (player.getHp() <= 0) game_over = true;
+                    if (len != 0) it->body.move((dir / len) * 70.f * deltaTime);
+
+                    bool enemyRemoved = false;
+
+                    // Kolizja: Przeciwnik -> Gracz
+                    if (checkColision(player.getBody(), it->body)) {
+                        player.attacked(window, 10.f); // Zadaj 10 obrażeń graczowi
+
+                        if (player.getHp() <= 0) {
+                            game_over = true;
+                        }
+
+                        it = enemies.erase(it); // Przeciwnik znika po dotknięciu gracza
+                        enemyRemoved = true;
+                    }
+
+                    if (!enemyRemoved) {
+                        ++it;
+                    }
                 }
-                else {
-                    ++it;
+
+                // 2. Kolizja: Pociski -> Przeciwnicy
+                for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
+                    bool bulletRemoved = false;
+
+                    for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
+                        // Tworzymy tymczasowe koło reprezentujące pocisk do sprawdzenia kolizji
+                        sf::CircleShape bulletCirc(15.f);
+                        bulletCirc.setPosition(it_bullet->getX(), it_bullet->getY());
+
+                        if (checkColision(bulletCirc, it_enemy->body)) {
+                            // Trafienie!
+                            score++;
+                            if (player.gainExperience(3)) weapon_spawned = true;
+
+                            it_enemy = enemies.erase(it_enemy); // Usuń przeciwnika
+                            bulletRemoved = true;
+                            break; // Pocisk może zabić tylko jednego wroga, wychodzimy z pętli wrogów
+                        }
+                        else {
+                            ++it_enemy;
+                        }
+                    }
+
+                    if (bulletRemoved) {
+                        it_bullet = bullets.erase(it_bullet); // Usuń pocisk
+                    }
+                    else {
+                        ++it_bullet;
+                    }
                 }
             }
         }
@@ -330,6 +383,8 @@ int main()
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getHp() + 20); player.heal(); weapon_spawned = false; }
+            //TODO
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() - 0.5f); weapon_spawned = false; }
         }
 
         window.clear();
