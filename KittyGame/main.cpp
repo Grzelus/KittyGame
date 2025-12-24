@@ -5,13 +5,18 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <random>
 
+class Weapon;
 
-//TODO
+int const WINDOW_WIDTH = 800;
+int const WINDOW_HEIGHT = 600;
 
-// balans attack speedu i dodanie jego wizualnej reprezentacji
-
-// Classes
+float const INITIAL_HP = 100.f;
+float const INITIAL_MAX_HP = 100.f;
+float const INITIAL_SPEED = 300.f;
+float const INITIAL_ATTACK = 5.f;
+float const INITIAL_ATTACK_SPEED = 2.f;
 
 class GameObject {
 protected:
@@ -78,20 +83,20 @@ public:
 class ExpCrystal : public GameObject {};
 
 class Character : public GameObject {
-private:
+protected:
     float hp;
-    float MAX_HP;
+    float max_hp;
     float speed;
     float attack;
     float attack_speed;
 public:
-    Character(float o_hp, float o_MAX_HP, float o_speed, float o_attack, float attack_speed)
-        : hp(o_hp), MAX_HP(o_MAX_HP), speed(o_speed), attack(o_attack), attack_speed(attack_speed) {
+    Character(float o_hp, float o_max_hp, float o_speed, float o_attack, float attack_speed)
+        : hp(o_hp), max_hp(o_max_hp), speed(o_speed), attack(o_attack), attack_speed(attack_speed) {
     }
 
     void takedamage(float dmg) { hp -= dmg; }
-    void heal() { this->hp = MAX_HP; }
-    void setMAX_HP(float new_MAX_HP) { this->MAX_HP = new_MAX_HP; }
+    void heal() { this->hp = max_hp; }
+    void setMAX_HP(float new_MAX_HP) { this->max_hp = new_MAX_HP; }
     void setSpeed(float new_speed) { this->speed = new_speed; }
     void setAttack(float new_attack) { this->attack = new_attack; }
     void set_attack_speed(float new_attack_speed) { this->attack_speed = new_attack_speed; }
@@ -111,12 +116,13 @@ private:
     int experience = 0;
     int level = 1;
 public:
+    std::vector<Weapon*> weapons;
     Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5, float attack_speed = 1.f)
         : Character(o_hp, o_MAX_HP, o_speed, o_attack, attack_speed),
         size(50.f),
         bodyShape(size)
     {
-        bodyShape.setPosition(100.f, 100.f);
+        bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
         bodyShape.setFillColor(sf::Color::Magenta);
         setBody(&bodyShape);
     }
@@ -142,6 +148,19 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
+    }
+    void reset_stats() {
+        attack = INITIAL_ATTACK;
+        attack_speed = INITIAL_ATTACK_SPEED;
+        hp = INITIAL_HP;
+        max_hp = INITIAL_MAX_HP;
+        speed = INITIAL_SPEED;
+
+        experience = 0;
+        level = 1;
+
+        bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
+        weapons.clear();
     }
 
     float shooting_angle(const sf::RenderWindow& window) {
@@ -186,10 +205,30 @@ public:
     float x, y;
     sf::CircleShape body;
     Enemy() {
+        calculate_spawn_position();
         body = spawn();
     }
-    float calculate_spawn_position() {
-        
+    void calculate_spawn_position() {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2);
+        std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2);
+        std::uniform_int_distribution dis_x_s(0, 1);
+        std::uniform_int_distribution dis_y_s(0, 1);
+        float x_offset = dis_x(gen);
+        float y_offset = dis_y(gen);
+        if (dis_x_s(gen) == 1) {
+            x = WINDOW_WIDTH / 2 - x_offset;
+        }
+        else {
+            x = WINDOW_WIDTH / 2 + x_offset;
+        }
+        if (dis_y_s(gen) == 1) {
+            y = WINDOW_WIDTH / 2 - y_offset;
+        }
+        else {
+            y = WINDOW_WIDTH / 2 + y_offset;
+        }
     };
     sf::CircleShape spawn() const {
         sf::CircleShape shape(size);
@@ -199,7 +238,48 @@ public:
     }
 };
 
-// Functionality
+class Weapon {
+protected:
+    float damage_multiplier;
+    float base_fire_delay;
+    float current_cooldown = 0.f;
+
+public:
+    Weapon(float dmg_mult, float delay) : damage_multiplier(dmg_mult), base_fire_delay(delay) {}
+
+    virtual ~Weapon() = default;
+
+    float get_damage_multiplier() const { return damage_multiplier; };
+    float get_base_fire_delay() const { return base_fire_delay; };
+
+    void update(float deltaTime) {
+        if (current_cooldown > 0.f) {
+            current_cooldown -= deltaTime;
+        }
+    }
+
+    bool can_fire() const {
+        return current_cooldown <= 0.f;
+    }
+
+    virtual void fire(sf::Vector2f startPos, float angle, std::vector<Bullet>& bulletContainer, float player_atk, float player_atk_spd) = 0;
+};
+
+class Gun : public Weapon {
+public:
+    Gun(float damage_multiplier, float delay) : Weapon(damage_multiplier, delay) {}
+
+    void fire(sf::Vector2f startPos, float angle, std::vector<Bullet>& bulletContainer, float player_atk, float player_atk_spd) override {
+        if (can_fire()) {
+            float actual_damage = player_atk * damage_multiplier;
+            float actual_delay = (player_atk_spd > 0) ? (base_fire_delay / player_atk_spd) : base_fire_delay;
+
+            bulletContainer.push_back(Bullet(actual_damage, angle, startPos.x, startPos.y));
+            current_cooldown = actual_delay;
+        }
+    }
+};
+
 
 bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
     sf::Vector2f aCenter = a.getPosition() + sf::Vector2f(a.getRadius(), a.getRadius());
@@ -220,15 +300,24 @@ void spawnWeaponChoice(sf::RenderWindow& window) {
     sf::Font font;
     if (!font.loadFromFile("arial.ttf")) return;
 
-    sf::Text choices("+5 Speed    +5 Attack   +5HP", font, 18);
+    sf::Text choices("+5 Speed    +5 Attack   +5HP    +0.5 AtkSpd", font, 18);
     choices.setFillColor(sf::Color::White);
     choices.setPosition(200.f, 300.f);
+
+    sf::Text num1("1", font, 24); num1.setPosition(235.f, 230.f); num1.setFillColor(sf::Color::Black);
+    sf::Text num2("2", font, 24); num2.setPosition(335.f, 230.f); num2.setFillColor(sf::Color::Black);
+    sf::Text num3("3", font, 24); num3.setPosition(435.f, 230.f); num3.setFillColor(sf::Color::Black);
+    sf::Text num4("4", font, 24); num4.setPosition(335.f, 160.f); num4.setFillColor(sf::Color::White);
 
     window.draw(table);
     window.draw(f_up);
     window.draw(s_up);
     window.draw(t_up);
     window.draw(choices);
+    window.draw(num1);
+    window.draw(num2);
+    window.draw(num3);
+    window.draw(num4);
 }
 
 void spawnGameOver(sf::RenderWindow& window) {
@@ -262,16 +351,24 @@ void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave) 
 int main()
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    sf::RenderWindow window(sf::VideoMode(800, 600), "Survival Game");
+    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Survival Game");
     window.setFramerateLimit(60);
 
-    Player player;
+    Player player(INITIAL_HP, INITIAL_MAX_HP, INITIAL_SPEED, INITIAL_ATTACK, INITIAL_ATTACK_SPEED);
+
+    // First Gun: 1.0x damage, 1.0s base delay (slow but normal damage)
+    Gun pistol(1.0f, 1.0f);
+    player.weapons.push_back(&pistol);
+
+    // Second Gun: 1.0x damage, 0.1s base delay (fast machine gun)
+    Gun pistol2(1.0f, 2.f);
+    player.weapons.push_back(&pistol2);
+
     float total_time = 0.f;
     int score = 0;
     int wave = 0;
     bool weapon_spawned = false;
     bool game_over = false;
-    float previous_shot_time = 0.f;
 
     std::vector<Enemy> enemies;
     std::vector<Bullet> bullets;
@@ -292,79 +389,74 @@ int main()
             spawn_enemy_wave(total_time, enemies, wave);
             player.update(deltaTime, window, active);
 
-            previous_shot_time += deltaTime;
-            if (previous_shot_time >= player.get_attack_speed()) {
-                previous_shot_time = 0.f;
-                float angle = player.shooting_angle(window);
-                sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
-                bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
+            for (auto weapon = player.weapons.begin(); weapon != player.weapons.end();) {
+                (*weapon)->update(deltaTime);
+                if ((*weapon)->can_fire()) {
+                    float angle = player.shooting_angle(window);
+                    sf::Vector2f playerCenter = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+
+                    (*weapon)->fire(playerCenter, angle, bullets, player.getAttack(), player.get_attack_speed());
+                }
+                ++weapon;
             }
 
             for (auto& b : bullets) b.update(deltaTime);
 
             bullets.erase(std::remove_if(bullets.begin(), bullets.end(), [&](const Bullet& b) {
-                return b.getX() < 0 || b.getX() > 800 || b.getY() < 0 || b.getY() > 600;
+                return b.getX() < 0 || b.getX() > WINDOW_WIDTH || b.getY() < 0 || b.getY() > WINDOW_HEIGHT;
                 }), bullets.end());
 
-            if (active) {
-                // 1. Ruch przeciwników i kolizja z Graczem
-                for (auto it = enemies.begin(); it != enemies.end();) {
-                    // Obliczanie wektora ruchu w stronę gracza
-                    sf::Vector2f ePos = it->body.getPosition() + sf::Vector2f(it->body.getRadius(), it->body.getRadius());
-                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
-                    sf::Vector2f dir = pPos - ePos;
-                    float len = std::hypot(dir.x, dir.y);
+            for (auto it = enemies.begin(); it != enemies.end();) {
+                sf::Vector2f ePos = it->body.getPosition() + sf::Vector2f(it->body.getRadius(), it->body.getRadius());
+                sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                sf::Vector2f dir = pPos - ePos;
+                float len = std::hypot(dir.x, dir.y);
 
-                    if (len != 0) it->body.move((dir / len) * 70.f * deltaTime);
+                if (len != 0) it->body.move((dir / len) * 70.f * deltaTime);
 
-                    bool enemyRemoved = false;
+                bool enemyRemoved = false;
 
-                    // Kolizja: Przeciwnik -> Gracz
-                    if (checkColision(player.getBody(), it->body)) {
-                        player.attacked(window, 10.f); // Zadaj 10 obrażeń graczowi
+                if (checkColision(player.getBody(), it->body)) {
+                    player.attacked(window, 10.f);
 
-                        if (player.getHp() <= 0) {
-                            game_over = true;
-                        }
-
-                        it = enemies.erase(it); // Przeciwnik znika po dotknięciu gracza
-                        enemyRemoved = true;
+                    if (player.getHp() <= 0) {
+                        game_over = true;
                     }
 
-                    if (!enemyRemoved) {
-                        ++it;
+                    it = enemies.erase(it);
+                    enemyRemoved = true;
+                }
+
+                if (!enemyRemoved) {
+                    ++it;
+                }
+            }
+
+            for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
+                bool bulletRemoved = false;
+
+                for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
+                    sf::CircleShape bulletCirc(15.f);
+                    bulletCirc.setPosition(it_bullet->getX(), it_bullet->getY());
+
+                    if (checkColision(bulletCirc, it_enemy->body)) {
+                        score++;
+                        if (player.gainExperience(3)) weapon_spawned = true;
+
+                        it_enemy = enemies.erase(it_enemy);
+                        bulletRemoved = true;
+                        break;
+                    }
+                    else {
+                        ++it_enemy;
                     }
                 }
 
-                // 2. Kolizja: Pociski -> Przeciwnicy
-                for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
-                    bool bulletRemoved = false;
-
-                    for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
-                        // Tworzymy tymczasowe koło reprezentujące pocisk do sprawdzenia kolizji
-                        sf::CircleShape bulletCirc(15.f);
-                        bulletCirc.setPosition(it_bullet->getX(), it_bullet->getY());
-
-                        if (checkColision(bulletCirc, it_enemy->body)) {
-                            // Trafienie!
-                            score++;
-                            if (player.gainExperience(3)) weapon_spawned = true;
-
-                            it_enemy = enemies.erase(it_enemy); // Usuń przeciwnika
-                            bulletRemoved = true;
-                            break; // Pocisk może zabić tylko jednego wroga, wychodzimy z pętli wrogów
-                        }
-                        else {
-                            ++it_enemy;
-                        }
-                    }
-
-                    if (bulletRemoved) {
-                        it_bullet = bullets.erase(it_bullet); // Usuń pocisk
-                    }
-                    else {
-                        ++it_bullet;
-                    }
+                if (bulletRemoved) {
+                    it_bullet = bullets.erase(it_bullet);
+                }
+                else {
+                    ++it_bullet;
                 }
             }
         }
@@ -374,17 +466,29 @@ int main()
                 game_over = false;
                 score = 0; total_time = 0; wave = 0;
                 enemies.clear(); bullets.clear();
-                player.heal();
+                player.reset_stats();
             }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) window.close();
         }
 
         if (weapon_spawned) {
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getHp() + 20); player.heal(); weapon_spawned = false; }
-            //TODO
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() - 0.5f); weapon_spawned = false; }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) {
+                player.setSpeed(player.getSpeed() + 30);
+                weapon_spawned = false;
+            }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) {
+                player.setAttack(player.getAttack() + 2);
+                weapon_spawned = false;
+            }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) {
+                player.setMAX_HP(player.getHp() + 20);
+                player.heal();
+                weapon_spawned = false;
+            }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) {
+                player.set_attack_speed(player.get_attack_speed() + 0.5f);
+                weapon_spawned = false;
+            }
         }
 
         window.clear();
