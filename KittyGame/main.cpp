@@ -110,6 +110,8 @@ private:
     sf::CircleShape bodyShape;
     int experience = 0;
     int level = 1;
+	int chosen_weapon = 0;
+	int weaponsAvailable = 1;
 public:
     Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5, float attack_speed = 1.f)
         : Character(o_hp, o_MAX_HP, o_speed, o_attack, attack_speed),
@@ -128,22 +130,39 @@ public:
         bodyShape.setFillColor(color);
         setBody(&bodyShape);
     }
-
+    //doswiadczenie  i poziom gracza
     bool gainExperience(int exp) {
         this->experience += exp;
-        if (experience >= level * 10) {
-            experience -= level * 10;
-            levelUp();
+        if (this->experience >= this->level * 10) {
+            this->experience -= this->level * 10;
+            this->levelUp();
             return true;
         }
+        
         return false;
     }
 
     void levelUp() {
         this->level += 1;
         this->heal();
+        if (!(this->level % 5)) {
+            this-> getNewWeapon(weaponsAvailable);
+            weaponsAvailable++;
+        }
     }
 
+    int getWeaponIndex()
+    { 
+		return this->chosen_weapon;
+	}
+    void getNewWeapon(int numberOfWeapon) const {
+        //  view of new weapon get
+	}
+    
+    void setWeapon(int weaponIndex) { this->chosen_weapon = weaponIndex; }
+
+
+	// ustalenie kąta strzału na podstawie pozycji myszy
     float shooting_angle(const sf::RenderWindow& window) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
         sf::Vector2f playerCenter = bodyShape.getPosition() + sf::Vector2f(bodyShape.getRadius(), bodyShape.getRadius());
@@ -153,15 +172,15 @@ public:
     void attacked(sf::RenderWindow& window, float dmg) {
         takedamage(dmg);
     }
-
+	// Movement with boundary checks
     void update(float deltaTime, const sf::RenderWindow& window, bool canMove) {
         if (!canMove) return;
 
         sf::Vector2f movement(0.f, 0.f);
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  movement.x -= getSpeed();
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) movement.x += getSpeed();
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))  movement.y += getSpeed();
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    movement.y -= getSpeed();
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))  movement.x -= getSpeed();
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D)) movement.x += getSpeed();
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))  movement.y += getSpeed();
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))    movement.y -= getSpeed();
 
         sf::Vector2u winSize = window.getSize();
         float diameter = bodyShape.getRadius() * 2.f;
@@ -173,6 +192,12 @@ public:
         if (pos.y + diameter >= static_cast<float>(winSize.y) && movement.y > 0.f) movement.y = 0.f;
 
         bodyShape.move(movement * deltaTime);
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1) && weaponsAvailable >= 1) setWeapon(0);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2) && weaponsAvailable >= 2) setWeapon(1);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3) && weaponsAvailable >= 3) setWeapon(2);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1) && weaponsAvailable >= 4) setWeapon(3);
+
     }
 
     const sf::CircleShape& getBody() const { return bodyShape; }
@@ -208,29 +233,73 @@ bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
     return dist < (a.getRadius() + b.getRadius());
 }
 
-void spawnWeaponChoice(sf::RenderWindow& window) {
-    sf::RectangleShape table(sf::Vector2f(400.f, 200.f));
+// Upgrade Choice Screen (renamed from spawnWeaponChoice)
+void spawnUpgradeChoice(sf::RenderWindow& window) {
+    // powiększone okno wyboru, cztery opcje
+    sf::RectangleShape table(sf::Vector2f(560.f, 220.f));
     table.setFillColor(sf::Color::Blue);
-    table.setPosition(150.f, 150.f);
+    table.setPosition(120.f, 140.f);
 
-    sf::CircleShape f_up(40.f, 3); f_up.setFillColor(sf::Color::Magenta); f_up.setPosition(200.f, 200.f);
-    sf::CircleShape s_up(40.f, 4); s_up.setFillColor(sf::Color::Yellow); s_up.setPosition(300.f, 200.f);
-    sf::CircleShape t_up(40.f, 5); t_up.setFillColor(sf::Color::Cyan); t_up.setPosition(400.f, 200.f);
+    const float radius = 40.f;
+    // kształty - używamy wielokątów (3,4,5,6) tak jak wcześniej
+    sf::CircleShape f_up(radius, 3); f_up.setFillColor(sf::Color::Magenta); f_up.setPosition(170.f, 200.f);
+    sf::CircleShape s_up(radius, 4); s_up.setFillColor(sf::Color::Yellow);  s_up.setPosition(280.f, 200.f);
+    sf::CircleShape t_up(radius, 5); t_up.setFillColor(sf::Color::Cyan);    t_up.setPosition(390.f, 200.f);
+    sf::CircleShape fo_up(radius, 6); fo_up.setFillColor(sf::Color::Green);  fo_up.setPosition(500.f, 200.f);
 
     sf::Font font;
     if (!font.loadFromFile("arial.ttf")) return;
 
-    sf::Text choices("+5 Speed    +5 Attack   +5HP", font, 18);
+    // opis opcji
+    sf::Text choices("+5 Speed    +5 Attack   +5HP    +5 Attack Speed", font, 18);
     choices.setFillColor(sf::Color::White);
-    choices.setPosition(200.f, 300.f);
+    choices.setPosition(160.f, 320.f);
+
+    // Teksty z cyframi, wycentrowane na środku każdej figury
+    sf::Text t1("1", font, 24);
+    sf::Text t2("2", font, 24);
+    sf::Text t3("3", font, 24);
+    sf::Text t4("4", font, 24);
+
+    t1.setFillColor(sf::Color::Black);
+    t2.setFillColor(sf::Color::Black);
+    t3.setFillColor(sf::Color::Black);
+    t4.setFillColor(sf::Color::Black);
+
+    // ustawienie originów na środek tekstu (dokładne wycentrowanie)
+    auto centerText = [](sf::Text& text) {
+        sf::FloatRect b = text.getLocalBounds();
+        text.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
+    };
+
+    centerText(t1);
+    centerText(t2);
+    centerText(t3);
+    centerText(t4);
+
+    // Pozycje środków figur (position + radius, ponieważ setPosition ustawia lewy górny punkt bounding boxa)
+    sf::Vector2f c1 = f_up.getPosition() + sf::Vector2f(radius, radius);
+    sf::Vector2f c2 = s_up.getPosition() + sf::Vector2f(radius, radius);
+    sf::Vector2f c3 = t_up.getPosition() + sf::Vector2f(radius, radius);
+    sf::Vector2f c4 = fo_up.getPosition() + sf::Vector2f(radius, radius);
+
+    t1.setPosition(c1);
+    t2.setPosition(c2);
+    t3.setPosition(c3);
+    t4.setPosition(c4);
 
     window.draw(table);
     window.draw(f_up);
     window.draw(s_up);
     window.draw(t_up);
+    window.draw(fo_up);
+    window.draw(t1);
+    window.draw(t2);
+    window.draw(t3);
+    window.draw(t4);
     window.draw(choices);
 }
-
+// Game Over Screen
 void spawnGameOver(sf::RenderWindow& window) {
     sf::RectangleShape table(sf::Vector2f(400.f, 220.f));
     table.setFillColor(sf::Color(20, 20, 80, 220));
@@ -272,6 +341,7 @@ int main()
     bool weapon_spawned = false;
     bool game_over = false;
     float previous_shot_time = 0.f;
+	float bulletseries=0;
 
     std::vector<Enemy> enemies;
     std::vector<Bullet> bullets;
@@ -286,19 +356,64 @@ int main()
 
         float deltaTime = clock.restart().asSeconds();
         bool active = !weapon_spawned && !game_over;
-
+		//update
         if (active) {
             total_time += deltaTime;
             spawn_enemy_wave(total_time, enemies, wave);
             player.update(deltaTime, window, active);
 
-            previous_shot_time += deltaTime;
-            if (previous_shot_time >= player.get_attack_speed()) {
-                previous_shot_time = 0.f;
-                float angle = player.shooting_angle(window);
-                sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
-                bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
+            switch (player.getWeaponIndex()) 
+            {
+            //rewolwer
+            case 0:
+            {
+                if (previous_shot_time >= player.get_attack_speed()) {
+                    previous_shot_time = 0.f;
+                    float angle = player.shooting_angle(window);
+                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                    bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
+                }
+                break;
             }
+			//karabin maszynowy
+            case 1:
+            {
+                if (previous_shot_time >= player.get_attack_speed()/5) {
+                    previous_shot_time = 0.f;
+                    float angle = player.shooting_angle(window);
+                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                    bullets.push_back(Bullet(player.getAttack()/5, angle, pPos.x, pPos.y));
+                }
+				break;
+            }
+			//strzelba strzelająca seriami 5 pocisków
+            case 2:
+            {
+                if (previous_shot_time >= player.get_attack_speed()/6 && bulletseries<=5) {
+                    previous_shot_time = 0.f;
+                    float angle = player.shooting_angle(window);
+                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                    bullets.push_back(Bullet(player.getAttack(), angle + 0.1f, pPos.x, pPos.y));
+					bulletseries++;
+				}
+                else if(previous_shot_time>=player.get_attack_speed()*2)
+                {
+                    previous_shot_time = 0.f;
+                    float angle = player.shooting_angle(window);
+                    sf::Vector2f pPos = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
+                    bullets.push_back(Bullet(player.getAttack(), angle + 0.1f, pPos.x, pPos.y));
+                    bulletseries = 1;
+                }
+                break;
+            }
+			//shotgun rozrzucający 3 pociski na raz todo
+            case 3: 
+            { break; }
+            default:
+                break;
+			}
+            previous_shot_time += deltaTime;
+            
 
             for (auto& b : bullets) b.update(deltaTime);
 
@@ -383,15 +498,16 @@ int main()
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getHp() + 20); player.heal(); weapon_spawned = false; }
-            //TODO
+            // opcja numer 4: zmniejszenie cooldownu ataku (szybsze strzelanie)
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() - 0.5f); weapon_spawned = false; }
         }
 
         window.clear();
-        player.renderBody(window);
+        
         for (auto& e : enemies) window.draw(e.body);
         for (auto& b : bullets) b.renderBody(window);
-        if (weapon_spawned) spawnWeaponChoice(window);
+        player.renderBody(window);
+        if (weapon_spawned) spawnUpgradeChoice(window);
         if (game_over) spawnGameOver(window);
         window.display();
     }
