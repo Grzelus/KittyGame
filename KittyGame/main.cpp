@@ -18,6 +18,7 @@ float const INITIAL_SPEED = 300.f;
 float const INITIAL_ATTACK = 5.f;
 float const INITIAL_ATTACK_SPEED = 2.f;
 
+
 class GameObject {
 protected:
     sf::Shape* body = nullptr;
@@ -64,6 +65,8 @@ public:
     void setBodyShape() {
         bulletShape = sf::CircleShape(size);
         bulletShape.setFillColor(sf::Color::Green);
+        // DODANO: Ustawienie origin na środek, tak jak w Player i Enemy
+        bulletShape.setOrigin(size, size);
     }
 
     void renderBody(sf::RenderWindow& window) {
@@ -115,6 +118,15 @@ private:
     sf::CircleShape bodyShape;
     int experience = 0;
     int level = 1;
+
+    sf::Sprite sprite;
+    sf::Texture texture; 
+    sf::Vector2i frameSize;
+    int numFrames;
+    int currentFrame;
+    float animationTimer;
+    float animationSpeed;
+    bool isMoving;
 public:
     std::vector<Weapon*> weapons;
     Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5, float attack_speed = 1.f)
@@ -123,10 +135,48 @@ public:
         bodyShape(size)
     {
         bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
-        bodyShape.setFillColor(sf::Color::Magenta);
+        bodyShape.setFillColor(sf::Color::Transparent); // Ważne: Przezroczysty
+
+        bodyShape.setOutlineColor(sf::Color::Red); // Czerwony obrys
+        bodyShape.setOutlineThickness(2.f);        // Grubość obrysu
+
+        bodyShape.setOrigin(size, size); // Origin na środku
         setBody(&bodyShape);
+
+        if (!texture.loadFromFile("assets/hero.png")) {
+            // Fallback: jeśli brak pliku, stwórzmy coś w pamięci
+            sf::Image img;
+            img.create(96, 32, sf::Color::Green);
+            texture.loadFromImage(img);
+        }
+        sprite.setTexture(texture);
+
+        // 3. Konfiguracja animacji
+        frameSize = sf::Vector2i(32, 32); // Ustaw rozmiar jednej klatki (np. 32x32)
+        numFrames = 3;                    // Liczba klatek w poziomie
+        currentFrame = 0;
+        animationTimer = 0.f;
+        animationSpeed = 0.1f; // Szybkość animacji
+        isMoving = false;
+
+        // Ustawienie pierwszej klatki
+        sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+        sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
+
+        // Skalowanie sprite'a do wielkości hitboxa (średnica 100px)
+        float scaleFactor = (size * 2.f) / frameSize.x;
+        sprite.setScale(scaleFactor, scaleFactor);
+
+        // Ustawienie pozycji startowej
+        sprite.setPosition(bodyShape.getPosition());
     }
 
+    void renderBody(sf::RenderWindow& window) override {
+        if (body) {
+            window.draw(*body); // Odkomentuj, żeby widzieć hitbox (debug)
+            window.draw(sprite);   // Rysujemy sprite'a
+        }
+    }
     void createBody(float radius, const sf::Vector2f& position, const sf::Color& color) {
         size = radius;
         bodyShape = sf::CircleShape(radius);
@@ -160,12 +210,11 @@ public:
         level = 1;
 
         bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
-        weapons.clear();
     }
 
     float shooting_angle(const sf::RenderWindow& window) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-        sf::Vector2f playerCenter = bodyShape.getPosition() + sf::Vector2f(bodyShape.getRadius(), bodyShape.getRadius());
+        sf::Vector2f playerCenter = bodyShape.getPosition();
         return std::atan2(mousePos.y - playerCenter.y, mousePos.x - playerCenter.x);
     }
 
@@ -174,6 +223,7 @@ public:
     }
 
     void update(float deltaTime, const sf::RenderWindow& window, bool canMove) {
+        isMoving = false;
         if (!canMove) return;
 
         sf::Vector2f movement(0.f, 0.f);
@@ -181,6 +231,10 @@ public:
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) movement.x += getSpeed();
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))  movement.y += getSpeed();
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    movement.y -= getSpeed();
+
+        if (movement.x != 0.f || movement.y != 0.f) {
+            isMoving = true;
+        }
 
         sf::Vector2u winSize = window.getSize();
         float diameter = bodyShape.getRadius() * 2.f;
@@ -192,89 +246,150 @@ public:
         if (pos.y + diameter >= static_cast<float>(winSize.y) && movement.y > 0.f) movement.y = 0.f;
 
         bodyShape.move(movement * deltaTime);
+
+        sprite.setPosition(bodyShape.getPosition());
+
+        // Animujemy tylko, gdy gracz się porusza
+        if (isMoving) {
+            animationTimer += deltaTime;
+            if (animationTimer >= animationSpeed) {
+                animationTimer = 0.f;
+                currentFrame = (currentFrame + 1) % numFrames; // Przejście do kolejnej klatki i zapętlenie
+                int left = currentFrame * frameSize.x;
+                sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
+            }
+        }
+        else {
+            // Opcjonalnie: Reset do klatki "idle" (stojącej), gdy się nie rusza
+            // currentFrame = 0;
+            // sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+        }
+
+        // Opcjonalnie: Obracanie sprite'a w stronę ruchu (lewo/prawo)
+        if (movement.x > 0) sprite.setScale(std::abs(sprite.getScale().x), sprite.getScale().y);
+        if (movement.x < 0) sprite.setScale(-std::abs(sprite.getScale().x), sprite.getScale().y);
     }
+    
 
     const sf::CircleShape& getBody() const { return bodyShape; }
     sf::CircleShape& getBody() { return bodyShape; }
 };
 
-class Enemy {
-private:
-    float size = 20.f; // Promień hitboxa (średnica 40px)
-public:
-    float x, y;
-    sf::CircleShape body; // To jest nasz niewidzialny hitbox
-    sf::Sprite sprite;    // To jest obrazek myszy
 
-    // Zmienne statyczne (wspólne dla wszystkich wrogów)
-    static sf::Texture texture;
-    static bool isTextureLoaded;
+    class Enemy {
+    private:
+        float size = 20.f; // Promień hitboxa
 
-    Enemy() {
-        // Ładowanie tekstury tylko raz!
-        if (!isTextureLoaded) {
-            if (!texture.loadFromFile("mouse.gif")) {
-                std::cerr << "Blad: Nie mozna zaladowac mouse.gif!" << std::endl;
-                // Opcjonalnie: stwórz tymczasowy obrazek w kodzie, jeśli pliku brak
+        // Zmienne do animacji
+        sf::Vector2i frameSize;      // Rozmiar jednej klatki (np. 32x32)
+        int numFrames;               // Liczba klatek (4)
+        int currentFrame;            // Aktualna klatka (0-3)
+        float animationTimer;        // Licznik czasu
+        float animationSpeed;        // Co ile sekund zmieniać klatkę (np. 0.1s)
+
+    public:
+        float x, y;
+        sf::CircleShape body;
+        sf::Sprite sprite;
+
+        static sf::Texture texture;
+        static bool isTextureLoaded;
+
+        Enemy() {
+            // 1. Ładowanie tekstury (Arkusz duszka - 4 klatki w poziomie)
+            if (!isTextureLoaded) {
+                // Upewnij się, że masz plik z 4 klatkami obok siebie!
+                if (!texture.loadFromFile("assets/enemy.png")) {
+                    // Fallback: stwórz tymczasowy obrazek w pamięci
+                    sf::Image img;
+                    img.create(128, 32, sf::Color::Blue);
+                    texture.loadFromImage(img);
+                }
+                isTextureLoaded = true;
             }
-            isTextureLoaded = true;
+
+            // 2. Konfiguracja animacji
+            frameSize = sf::Vector2i(32, 32); // Przyjmujemy, że jedna klatka ma 32x32px
+            numFrames = 4;
+            currentFrame = 0;
+            animationTimer = 0.f;
+            animationSpeed = 0.1f; // Zmiana klatki co 0.1 sekundy
+
+            calculate_spawn_position();
+            body = spawn_hitbox();
+
+            sprite.setTexture(texture);
+
+            // 3. Ustawienie pierwszego wycinka tekstury (IntRect)
+            // (lewo, góra, szerokość, wysokość)
+            sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+
+            // Ustawienie Origin na środek KLATKI, a nie całego paska
+            sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
+
+            // Dopasowanie skali, żeby pasowało do hitboxa (średnica 40px)
+            float scaleFactor = (size * 2.f) / frameSize.x;
+            sprite.setScale(scaleFactor, scaleFactor);
+
+            sprite.setPosition(body.getPosition());
         }
 
-        calculate_spawn_position();
+        void calculate_spawn_position() {
+            static std::random_device rd;
+            static std::mt19937 gen(rd());
+            std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2.f);
+            std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2.f);
+            std::uniform_int_distribution<int> dis_x_s(0, 1);
+            std::uniform_int_distribution<int> dis_y_s(0, 1);
 
-        // Konfiguracja hitboxa (niewidzialne koło do kolizji)
-        body = spawn_hitbox();
+            float x_offset = dis_x(gen);
+            float y_offset = dis_y(gen);
 
-        // Konfiguracja sprite'a (wygląd)
-        sprite.setTexture(texture);
+            if (dis_x_s(gen) == 1) x = WINDOW_WIDTH / 2.f - x_offset;
+            else x = WINDOW_WIDTH / 2.f + x_offset;
 
-        // Skalowanie myszy, żeby pasowała do hitboxa (zakładamy, że mysz ma ok 40x40px)
-        // Jeśli obrazek jest duży, trzeba go zmniejszyć:
-        // float scaleX = (size * 2) / texture.getSize().x;
-        // float scaleY = (size * 2) / texture.getSize().y;
-        // sprite.setScale(scaleX, scaleY);
+            if (dis_y_s(gen) == 1) y = WINDOW_HEIGHT / 2.f - y_offset;
+            else y = WINDOW_HEIGHT / 2.f + y_offset;
+        };
 
-        // Ustawienie pozycji sprite na pozycji ciała
-        sprite.setPosition(body.getPosition());
-    }
+        sf::CircleShape spawn_hitbox() const {
+            sf::CircleShape shape(size);
+            shape.setFillColor(sf::Color::Transparent);
 
-    void calculate_spawn_position() {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2.f);
-        std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2.f);
-        std::uniform_int_distribution<int> dis_x_s(0, 1);
-        std::uniform_int_distribution<int> dis_y_s(0, 1);
+            shape.setOutlineColor(sf::Color::Red); // Czerwony obrys
+            shape.setOutlineThickness(2.f);
 
-        float x_offset = dis_x(gen);
-        float y_offset = dis_y(gen);
+            shape.setPosition(x, y);
+            // Ważne: Origin hitboxa na środku
+            shape.setOrigin(size, size);
+            return shape;
+        }
 
-        if (dis_x_s(gen) == 1) x = WINDOW_WIDTH / 2.f - x_offset;
-        else x = WINDOW_WIDTH / 2.f + x_offset;
+        // Nowa funkcja aktualizująca animację i pozycję
+        void update(float deltaTime) {
+            // 1. Aktualizacja pozycji wizualnej
+            sprite.setPosition(body.getPosition());
 
-        if (dis_y_s(gen) == 1) y = WINDOW_HEIGHT / 2.f - y_offset;
-        else y = WINDOW_HEIGHT / 2.f + y_offset;
+            // 2. Logika animacji
+            animationTimer += deltaTime;
+            if (animationTimer >= animationSpeed) {
+                animationTimer = 0.f;
+                currentFrame++;
+
+                // Zapętlenie animacji (0 -> 1 -> 2 -> 3 -> 0)
+                if (currentFrame >= numFrames) {
+                    currentFrame = 0;
+                }
+
+                // Przesunięcie okna wycinania (IntRect) na odpowiednią klatkę
+                int left = currentFrame * frameSize.x;
+                sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
+            }
+        }
     };
 
-    sf::CircleShape spawn_hitbox() const {
-        sf::CircleShape shape(size);
-        // Ustawiamy kolor na przezroczysty, bo rysujemy sprite'a
-        // Możesz zmienić na Red, żeby widzieć czy sprite dobrze leży na hitboxie (debugowanie)
-        shape.setFillColor(sf::Color::Transparent);
-        shape.setPosition(x, y);
-        return shape;
-    }
-
-    // Funkcja do aktualizacji pozycji sprite'a względem hitboxa
-    void updateVisuals() {
-        sprite.setPosition(body.getPosition());
-    }
-};
-
-// WAŻNE: Definicja zmiennych statycznych musi być POZA klasą
-sf::Texture Enemy::texture;
-bool Enemy::isTextureLoaded = false;
-
+    sf::Texture Enemy::texture;
+    bool Enemy::isTextureLoaded = false;
 class Weapon {
 protected:
     float damage_multiplier;
@@ -319,9 +434,14 @@ public:
 
 
 bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
-    sf::Vector2f aCenter = a.getPosition() + sf::Vector2f(a.getRadius(), a.getRadius());
-    sf::Vector2f bCenter = b.getPosition() + sf::Vector2f(b.getRadius(), b.getRadius());
-    float dist = std::hypot(aCenter.x - bCenter.x, aCenter.y - bCenter.y);
+    // Pobieramy pozycje. Zakładamy, że dla kół Origin jest ustawiony na środku.
+    sf::Vector2f aPos = a.getPosition();
+    sf::Vector2f bPos = b.getPosition();
+
+    // Obliczamy odległość Euklidesową (Pitagoras)
+    float dist = std::hypot(aPos.x - bPos.x, aPos.y - bPos.y);
+
+    // Sprawdzamy czy odległość jest mniejsza niż suma promieni
     return dist < (a.getRadius() + b.getRadius());
 }
 
@@ -385,6 +505,7 @@ void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave) 
     }
 }
 
+
 int main()
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -430,8 +551,7 @@ int main()
                 (*weapon)->update(deltaTime);
                 if ((*weapon)->can_fire()) {
                     float angle = player.shooting_angle(window);
-                    sf::Vector2f playerCenter = player.getBody().getPosition() + sf::Vector2f(player.getBody().getRadius(), player.getBody().getRadius());
-
+                    sf::Vector2f playerCenter = player.getBody().getPosition();
                     (*weapon)->fire(playerCenter, angle, bullets, player.getAttack(), player.get_attack_speed());
                 }
                 ++weapon;
@@ -449,7 +569,11 @@ int main()
                 sf::Vector2f dir = pPos - ePos;
                 float len = std::hypot(dir.x, dir.y);
 
-                if (len != 0) it->body.move((dir / len) * 70.f * deltaTime);
+                if (len != 0)
+                {
+                    it->body.move((dir / len) * 70.f * deltaTime);
+                    it->update(deltaTime);
+                };
 
                 bool enemyRemoved = false;
 
@@ -530,7 +654,10 @@ int main()
 
         window.clear();
         player.renderBody(window);
-        for (auto& e : enemies) window.draw(e.body);
+        for (auto& e : enemies) {
+            window.draw(e.sprite); // Rysuje grafikę
+            window.draw(e.body);   // Rysuje hitbox (DODAJ TO)
+        }
         for (auto& b : bullets) b.renderBody(window);
         if (weapon_spawned) spawnWeaponChoice(window);
         if (game_over) spawnGameOver(window);
