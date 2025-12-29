@@ -200,43 +200,80 @@ public:
 
 class Enemy {
 private:
-    float size = 20.f;
+    float size = 20.f; // Promień hitboxa (średnica 40px)
 public:
     float x, y;
-    sf::CircleShape body;
+    sf::CircleShape body; // To jest nasz niewidzialny hitbox
+    sf::Sprite sprite;    // To jest obrazek myszy
+
+    // Zmienne statyczne (wspólne dla wszystkich wrogów)
+    static sf::Texture texture;
+    static bool isTextureLoaded;
+
     Enemy() {
+        // Ładowanie tekstury tylko raz!
+        if (!isTextureLoaded) {
+            if (!texture.loadFromFile("mouse.gif")) {
+                std::cerr << "Blad: Nie mozna zaladowac mouse.gif!" << std::endl;
+                // Opcjonalnie: stwórz tymczasowy obrazek w kodzie, jeśli pliku brak
+            }
+            isTextureLoaded = true;
+        }
+
         calculate_spawn_position();
-        body = spawn();
+
+        // Konfiguracja hitboxa (niewidzialne koło do kolizji)
+        body = spawn_hitbox();
+
+        // Konfiguracja sprite'a (wygląd)
+        sprite.setTexture(texture);
+
+        // Skalowanie myszy, żeby pasowała do hitboxa (zakładamy, że mysz ma ok 40x40px)
+        // Jeśli obrazek jest duży, trzeba go zmniejszyć:
+        // float scaleX = (size * 2) / texture.getSize().x;
+        // float scaleY = (size * 2) / texture.getSize().y;
+        // sprite.setScale(scaleX, scaleY);
+
+        // Ustawienie pozycji sprite na pozycji ciała
+        sprite.setPosition(body.getPosition());
     }
+
     void calculate_spawn_position() {
         static std::random_device rd;
         static std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2);
-        std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2);
-        std::uniform_int_distribution dis_x_s(0, 1);
-        std::uniform_int_distribution dis_y_s(0, 1);
+        std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2.f);
+        std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2.f);
+        std::uniform_int_distribution<int> dis_x_s(0, 1);
+        std::uniform_int_distribution<int> dis_y_s(0, 1);
+
         float x_offset = dis_x(gen);
         float y_offset = dis_y(gen);
-        if (dis_x_s(gen) == 1) {
-            x = WINDOW_WIDTH / 2 - x_offset;
-        }
-        else {
-            x = WINDOW_WIDTH / 2 + x_offset;
-        }
-        if (dis_y_s(gen) == 1) {
-            y = WINDOW_WIDTH / 2 - y_offset;
-        }
-        else {
-            y = WINDOW_WIDTH / 2 + y_offset;
-        }
+
+        if (dis_x_s(gen) == 1) x = WINDOW_WIDTH / 2.f - x_offset;
+        else x = WINDOW_WIDTH / 2.f + x_offset;
+
+        if (dis_y_s(gen) == 1) y = WINDOW_HEIGHT / 2.f - y_offset;
+        else y = WINDOW_HEIGHT / 2.f + y_offset;
     };
-    sf::CircleShape spawn() const {
+
+    sf::CircleShape spawn_hitbox() const {
         sf::CircleShape shape(size);
-        shape.setFillColor(sf::Color::Red);
+        // Ustawiamy kolor na przezroczysty, bo rysujemy sprite'a
+        // Możesz zmienić na Red, żeby widzieć czy sprite dobrze leży na hitboxie (debugowanie)
+        shape.setFillColor(sf::Color::Transparent);
         shape.setPosition(x, y);
         return shape;
     }
+
+    // Funkcja do aktualizacji pozycji sprite'a względem hitboxa
+    void updateVisuals() {
+        sprite.setPosition(body.getPosition());
+    }
 };
+
+// WAŻNE: Definicja zmiennych statycznych musi być POZA klasą
+sf::Texture Enemy::texture;
+bool Enemy::isTextureLoaded = false;
 
 class Weapon {
 protected:
