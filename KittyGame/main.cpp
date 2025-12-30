@@ -45,43 +45,68 @@ public:
 class Bullet : public GameObject {
 private:
     float damage;
-    float size = 15.f;
     float speed = 500.f;
     float x_position;
     float y_position;
     float angle;
-    sf::CircleShape bulletShape;
+
+    sf::Sprite sprite;
+    static sf::Texture texture;
+    static bool isTextureLoaded;
+
 public:
     Bullet(float o_damage, float o_angle, float new_x, float new_y)
         : damage(o_damage), angle(o_angle), x_position(new_x), y_position(new_y) {
-        setBodyShape();
+
+        if (!isTextureLoaded) {
+            if (!texture.loadFromFile("assets/bullet.png")) {
+                sf::Image img;
+                img.create(10, 20, sf::Color::White);
+                texture.loadFromImage(img);
+            }
+            texture.setSmooth(true);
+            isTextureLoaded = true;
+        }
+
+        sprite.setTexture(texture);
+
+        sf::Vector2u texSize = texture.getSize();
+        // POPRAWKA HITBOXA Z POPRZEDNIEJ ODPOWIEDZI (Dzielenie zamiast mnożenia)
+        sprite.setOrigin(texSize.x / 2.f, texSize.y / 2.f);
+
+        // Opcjonalne skalowanie
+        sprite.setScale(0.5f, 0.5f);
+
+        sprite.setPosition(x_position, y_position);
+
+        float degrees = angle * 180.f / 3.14159265f;
+        sprite.setRotation(degrees + 90.f);
     };
 
     void update(float deltaTime) {
         x_position += std::cos(angle) * speed * deltaTime;
         y_position += std::sin(angle) * speed * deltaTime;
+
+        sprite.setPosition(x_position, y_position);
     }
 
-    void setBodyShape() {
-        bulletShape = sf::CircleShape(size);
-        bulletShape.setFillColor(sf::Color::Green);
-        // DODANO: Ustawienie origin na środek, tak jak w Player i Enemy
-        bulletShape.setOrigin(size, size);
-    }
-
-    void renderBody(sf::RenderWindow& window) {
-        bulletShape.setPosition(x_position, y_position);
-        window.draw(bulletShape);
+    void renderBody(sf::RenderWindow& window) override {
+        window.draw(sprite);
     }
 
     float getX() const { return x_position; }
     float getY() const { return y_position; }
     float getDamage() const { return damage; }
+    // Pomocniczy promień do kolizji
+    float getRadius() const { return 8.f; }
 
     bool operator==(const Bullet& other) const {
         return (this->x_position == other.x_position) && (this->y_position == other.y_position);
     }
 };
+
+sf::Texture Bullet::texture;
+bool Bullet::isTextureLoaded = false;
 
 class ExpCrystal : public GameObject {};
 
@@ -120,7 +145,7 @@ private:
     int level = 1;
 
     sf::Sprite sprite;
-    sf::Texture texture; 
+    sf::Texture texture;
     sf::Vector2i frameSize;
     int numFrames;
     int currentFrame;
@@ -135,46 +160,41 @@ public:
         bodyShape(size)
     {
         bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
-        bodyShape.setFillColor(sf::Color::Transparent); // Ważne: Przezroczysty
+        bodyShape.setFillColor(sf::Color::Transparent);
 
-        bodyShape.setOutlineColor(sf::Color::Red); // Czerwony obrys
-        bodyShape.setOutlineThickness(2.f);        // Grubość obrysu
+        bodyShape.setOutlineColor(sf::Color::Red);
+        bodyShape.setOutlineThickness(2.f);
 
-        bodyShape.setOrigin(size, size); // Origin na środku
+        bodyShape.setOrigin(size, size);
         setBody(&bodyShape);
 
         if (!texture.loadFromFile("assets/hero.png")) {
-            // Fallback: jeśli brak pliku, stwórzmy coś w pamięci
             sf::Image img;
             img.create(96, 32, sf::Color::Green);
             texture.loadFromImage(img);
         }
         sprite.setTexture(texture);
 
-        // 3. Konfiguracja animacji
-        frameSize = sf::Vector2i(32, 32); // Ustaw rozmiar jednej klatki (np. 32x32)
-        numFrames = 3;                    // Liczba klatek w poziomie
+        frameSize = sf::Vector2i(32, 32);
+        numFrames = 3;
         currentFrame = 0;
         animationTimer = 0.f;
-        animationSpeed = 0.1f; // Szybkość animacji
+        animationSpeed = 0.1f;
         isMoving = false;
 
-        // Ustawienie pierwszej klatki
         sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
         sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
 
-        // Skalowanie sprite'a do wielkości hitboxa (średnica 100px)
         float scaleFactor = (size * 2.f) / frameSize.x;
         sprite.setScale(scaleFactor, scaleFactor);
 
-        // Ustawienie pozycji startowej
         sprite.setPosition(bodyShape.getPosition());
     }
 
     void renderBody(sf::RenderWindow& window) override {
         if (body) {
-            window.draw(*body); // Odkomentuj, żeby widzieć hitbox (debug)
-            window.draw(sprite);   // Rysujemy sprite'a
+            // window.draw(*body); // Odkomentuj do debugowania hitboxa
+            window.draw(sprite);
         }
     }
     void createBody(float radius, const sf::Vector2f& position, const sf::Color& color) {
@@ -249,147 +269,121 @@ public:
 
         sprite.setPosition(bodyShape.getPosition());
 
-        // Animujemy tylko, gdy gracz się porusza
         if (isMoving) {
             animationTimer += deltaTime;
             if (animationTimer >= animationSpeed) {
                 animationTimer = 0.f;
-                currentFrame = (currentFrame + 1) % numFrames; // Przejście do kolejnej klatki i zapętlenie
+                currentFrame = (currentFrame + 1) % numFrames;
                 int left = currentFrame * frameSize.x;
                 sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
             }
         }
         else {
-            // Opcjonalnie: Reset do klatki "idle" (stojącej), gdy się nie rusza
-            // currentFrame = 0;
-            // sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+            // Opcjonalnie: Reset do klatki "idle"
         }
 
-        // Opcjonalnie: Obracanie sprite'a w stronę ruchu (lewo/prawo)
         if (movement.x > 0) sprite.setScale(std::abs(sprite.getScale().x), sprite.getScale().y);
         if (movement.x < 0) sprite.setScale(-std::abs(sprite.getScale().x), sprite.getScale().y);
     }
-    
+
 
     const sf::CircleShape& getBody() const { return bodyShape; }
     sf::CircleShape& getBody() { return bodyShape; }
 };
 
 
-    class Enemy {
-    private:
-        float size = 20.f; // Promień hitboxa
+class Enemy {
+private:
+    float size = 20.f;
+    sf::Vector2i frameSize;
+    int numFrames;
+    int currentFrame;
+    float animationTimer;
+    float animationSpeed;
 
-        // Zmienne do animacji
-        sf::Vector2i frameSize;      // Rozmiar jednej klatki (np. 32x32)
-        int numFrames;               // Liczba klatek (4)
-        int currentFrame;            // Aktualna klatka (0-3)
-        float animationTimer;        // Licznik czasu
-        float animationSpeed;        // Co ile sekund zmieniać klatkę (np. 0.1s)
+public:
+    float x, y;
+    sf::CircleShape body;
+    sf::Sprite sprite;
 
-    public:
-        float x, y;
-        sf::CircleShape body;
-        sf::Sprite sprite;
+    static sf::Texture texture;
+    static bool isTextureLoaded;
 
-        static sf::Texture texture;
-        static bool isTextureLoaded;
-
-        Enemy() {
-            // 1. Ładowanie tekstury (Arkusz duszka - 4 klatki w poziomie)
-            if (!isTextureLoaded) {
-                // Upewnij się, że masz plik z 4 klatkami obok siebie!
-                if (!texture.loadFromFile("assets/enemy.png")) {
-                    // Fallback: stwórz tymczasowy obrazek w pamięci
-                    sf::Image img;
-                    img.create(128, 32, sf::Color::Blue);
-                    texture.loadFromImage(img);
-                }
-                isTextureLoaded = true;
+    Enemy() {
+        if (!isTextureLoaded) {
+            if (!texture.loadFromFile("assets/enemy.png")) {
+                sf::Image img;
+                img.create(128, 32, sf::Color::Blue);
+                texture.loadFromImage(img);
             }
-
-            // 2. Konfiguracja animacji
-            frameSize = sf::Vector2i(32, 32); // Przyjmujemy, że jedna klatka ma 32x32px
-            numFrames = 4;
-            currentFrame = 0;
-            animationTimer = 0.f;
-            animationSpeed = 0.1f; // Zmiana klatki co 0.1 sekundy
-
-            calculate_spawn_position();
-            body = spawn_hitbox();
-
-            sprite.setTexture(texture);
-
-            // 3. Ustawienie pierwszego wycinka tekstury (IntRect)
-            // (lewo, góra, szerokość, wysokość)
-            sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
-
-            // Ustawienie Origin na środek KLATKI, a nie całego paska
-            sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
-
-            // Dopasowanie skali, żeby pasowało do hitboxa (średnica 40px)
-            float scaleFactor = (size * 2.f) / frameSize.x;
-            sprite.setScale(scaleFactor, scaleFactor);
-
-            sprite.setPosition(body.getPosition());
+            isTextureLoaded = true;
         }
 
-        void calculate_spawn_position() {
-            static std::random_device rd;
-            static std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2.f);
-            std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2.f);
-            std::uniform_int_distribution<int> dis_x_s(0, 1);
-            std::uniform_int_distribution<int> dis_y_s(0, 1);
+        frameSize = sf::Vector2i(32, 32);
+        numFrames = 4;
+        currentFrame = 0;
+        animationTimer = 0.f;
+        animationSpeed = 0.1f;
 
-            float x_offset = dis_x(gen);
-            float y_offset = dis_y(gen);
+        calculate_spawn_position();
+        body = spawn_hitbox();
 
-            if (dis_x_s(gen) == 1) x = WINDOW_WIDTH / 2.f - x_offset;
-            else x = WINDOW_WIDTH / 2.f + x_offset;
+        sprite.setTexture(texture);
+        sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+        sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
 
-            if (dis_y_s(gen) == 1) y = WINDOW_HEIGHT / 2.f - y_offset;
-            else y = WINDOW_HEIGHT / 2.f + y_offset;
-        };
+        float scaleFactor = (size * 2.f) / frameSize.x;
+        sprite.setScale(scaleFactor, scaleFactor);
 
-        sf::CircleShape spawn_hitbox() const {
-            sf::CircleShape shape(size);
-            shape.setFillColor(sf::Color::Transparent);
+        sprite.setPosition(body.getPosition());
+    }
 
-            shape.setOutlineColor(sf::Color::Red); // Czerwony obrys
-            shape.setOutlineThickness(2.f);
+    void calculate_spawn_position() {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dis_x(100.f, WINDOW_WIDTH / 2.f);
+        std::uniform_real_distribution<float> dis_y(100.f, WINDOW_HEIGHT / 2.f);
+        std::uniform_int_distribution<int> dis_x_s(0, 1);
+        std::uniform_int_distribution<int> dis_y_s(0, 1);
 
-            shape.setPosition(x, y);
-            // Ważne: Origin hitboxa na środku
-            shape.setOrigin(size, size);
-            return shape;
-        }
+        float x_offset = dis_x(gen);
+        float y_offset = dis_y(gen);
 
-        // Nowa funkcja aktualizująca animację i pozycję
-        void update(float deltaTime) {
-            // 1. Aktualizacja pozycji wizualnej
-            sprite.setPosition(body.getPosition());
+        if (dis_x_s(gen) == 1) x = WINDOW_WIDTH / 2.f - x_offset;
+        else x = WINDOW_WIDTH / 2.f + x_offset;
 
-            // 2. Logika animacji
-            animationTimer += deltaTime;
-            if (animationTimer >= animationSpeed) {
-                animationTimer = 0.f;
-                currentFrame++;
-
-                // Zapętlenie animacji (0 -> 1 -> 2 -> 3 -> 0)
-                if (currentFrame >= numFrames) {
-                    currentFrame = 0;
-                }
-
-                // Przesunięcie okna wycinania (IntRect) na odpowiednią klatkę
-                int left = currentFrame * frameSize.x;
-                sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
-            }
-        }
+        if (dis_y_s(gen) == 1) y = WINDOW_HEIGHT / 2.f - y_offset;
+        else y = WINDOW_HEIGHT / 2.f + y_offset;
     };
 
-    sf::Texture Enemy::texture;
-    bool Enemy::isTextureLoaded = false;
+    sf::CircleShape spawn_hitbox() const {
+        sf::CircleShape shape(size);
+        shape.setFillColor(sf::Color::Transparent);
+        shape.setOutlineColor(sf::Color::Red);
+        shape.setOutlineThickness(2.f);
+        shape.setPosition(x, y);
+        shape.setOrigin(size, size);
+        return shape;
+    }
+
+    void update(float deltaTime) {
+        sprite.setPosition(body.getPosition());
+
+        animationTimer += deltaTime;
+        if (animationTimer >= animationSpeed) {
+            animationTimer = 0.f;
+            currentFrame++;
+            if (currentFrame >= numFrames) {
+                currentFrame = 0;
+            }
+            int left = currentFrame * frameSize.x;
+            sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
+        }
+    }
+};
+
+sf::Texture Enemy::texture;
+bool Enemy::isTextureLoaded = false;
 class Weapon {
 protected:
     float damage_multiplier;
@@ -398,34 +392,27 @@ protected:
 
 public:
     Weapon(float dmg_mult, float delay) : damage_multiplier(dmg_mult), base_fire_delay(delay) {}
-
     virtual ~Weapon() = default;
-
     float get_damage_multiplier() const { return damage_multiplier; };
     float get_base_fire_delay() const { return base_fire_delay; };
-
     void update(float deltaTime) {
         if (current_cooldown > 0.f) {
             current_cooldown -= deltaTime;
         }
     }
-
     bool can_fire() const {
         return current_cooldown <= 0.f;
     }
-
     virtual void fire(sf::Vector2f startPos, float angle, std::vector<Bullet>& bulletContainer, float player_atk, float player_atk_spd) = 0;
 };
 
 class Gun : public Weapon {
 public:
     Gun(float damage_multiplier, float delay) : Weapon(damage_multiplier, delay) {}
-
     void fire(sf::Vector2f startPos, float angle, std::vector<Bullet>& bulletContainer, float player_atk, float player_atk_spd) override {
         if (can_fire()) {
             float actual_damage = player_atk * damage_multiplier;
             float actual_delay = (player_atk_spd > 0) ? (base_fire_delay / player_atk_spd) : base_fire_delay;
-
             bulletContainer.push_back(Bullet(actual_damage, angle, startPos.x, startPos.y));
             current_cooldown = actual_delay;
         }
@@ -434,14 +421,9 @@ public:
 
 
 bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
-    // Pobieramy pozycje. Zakładamy, że dla kół Origin jest ustawiony na środku.
     sf::Vector2f aPos = a.getPosition();
     sf::Vector2f bPos = b.getPosition();
-
-    // Obliczamy odległość Euklidesową (Pitagoras)
     float dist = std::hypot(aPos.x - bPos.x, aPos.y - bPos.y);
-
-    // Sprawdzamy czy odległość jest mniejsza niż suma promieni
     return dist < (a.getRadius() + b.getRadius());
 }
 
@@ -449,50 +431,28 @@ void spawnWeaponChoice(sf::RenderWindow& window) {
     sf::RectangleShape table(sf::Vector2f(400.f, 200.f));
     table.setFillColor(sf::Color::Blue);
     table.setPosition(150.f, 150.f);
-
+    // (Skróciłem kod rysowania wyboru broni dla czytelności, jest bez zmian)
     sf::CircleShape f_up(40.f, 3); f_up.setFillColor(sf::Color::Magenta); f_up.setPosition(200.f, 200.f);
     sf::CircleShape s_up(40.f, 4); s_up.setFillColor(sf::Color::Yellow); s_up.setPosition(300.f, 200.f);
     sf::CircleShape t_up(40.f, 5); t_up.setFillColor(sf::Color::Cyan); t_up.setPosition(400.f, 200.f);
-
-    sf::Font font;
-    if (!font.loadFromFile("arial.ttf")) return;
-
-    sf::Text choices("+5 Speed    +5 Attack   +5HP    +0.5 AtkSpd", font, 18);
-    choices.setFillColor(sf::Color::White);
-    choices.setPosition(200.f, 300.f);
-
+    sf::Font font; if (!font.loadFromFile("arial.ttf")) return;
+    sf::Text choices("+5 Speed    +5 Attack   +5HP    +0.5 AtkSpd", font, 18); choices.setFillColor(sf::Color::White); choices.setPosition(200.f, 300.f);
     sf::Text num1("1", font, 24); num1.setPosition(235.f, 230.f); num1.setFillColor(sf::Color::Black);
     sf::Text num2("2", font, 24); num2.setPosition(335.f, 230.f); num2.setFillColor(sf::Color::Black);
     sf::Text num3("3", font, 24); num3.setPosition(435.f, 230.f); num3.setFillColor(sf::Color::Black);
     sf::Text num4("4", font, 24); num4.setPosition(335.f, 160.f); num4.setFillColor(sf::Color::White);
-
-    window.draw(table);
-    window.draw(f_up);
-    window.draw(s_up);
-    window.draw(t_up);
-    window.draw(choices);
-    window.draw(num1);
-    window.draw(num2);
-    window.draw(num3);
-    window.draw(num4);
+    window.draw(table); window.draw(f_up); window.draw(s_up); window.draw(t_up); window.draw(choices);
+    window.draw(num1); window.draw(num2); window.draw(num3); window.draw(num4);
 }
 
 void spawnGameOver(sf::RenderWindow& window) {
     sf::RectangleShape table(sf::Vector2f(400.f, 220.f));
     table.setFillColor(sf::Color(20, 20, 80, 220));
     table.setPosition(200.f, 150.f);
-
-    sf::Font font;
-    if (!font.loadFromFile("arial.ttf")) return;
-
-    sf::Text go_text("GAME OVER!!", font, 36);
-    go_text.setPosition(250.f, 180.f);
-    sf::Text hint("R - Restart, Q - Quit", font, 18);
-    hint.setPosition(280.f, 280.f);
-
-    window.draw(table);
-    window.draw(go_text);
-    window.draw(hint);
+    sf::Font font; if (!font.loadFromFile("arial.ttf")) return;
+    sf::Text go_text("GAME OVER!!", font, 36); go_text.setPosition(250.f, 180.f);
+    sf::Text hint("R - Restart, Q - Quit", font, 18); hint.setPosition(280.f, 280.f);
+    window.draw(table); window.draw(go_text); window.draw(hint);
 }
 
 void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave) {
@@ -512,14 +472,31 @@ int main()
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Survival Game");
     window.setFramerateLimit(60);
 
+    // --- NOWY KOD: Ładowanie i konfiguracja tła ---
+    sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile("assets/background.png")) {
+        std::cout << "Blad ladowania tla! Upewnij sie, ze plik assets/background.png istnieje." << std::endl;
+        // Opcjonalnie: stwórz tymczasowe tło
+        sf::Image img; img.create(WINDOW_WIDTH, WINDOW_HEIGHT, sf::Color(50, 100, 50));
+        backgroundTexture.loadFromImage(img);
+    }
+
+    sf::Sprite backgroundSprite;
+    backgroundSprite.setTexture(backgroundTexture);
+
+    // Automatyczne skalowanie tła do rozmiaru okna
+    sf::Vector2u textureSize = backgroundTexture.getSize();
+    float scaleX = static_cast<float>(WINDOW_WIDTH) / textureSize.x;
+    float scaleY = static_cast<float>(WINDOW_HEIGHT) / textureSize.y;
+    backgroundSprite.setScale(scaleX, scaleY);
+    // ----------------------------------------------
+
+
     Player player(INITIAL_HP, INITIAL_MAX_HP, INITIAL_SPEED, INITIAL_ATTACK, INITIAL_ATTACK_SPEED);
 
-    // First Gun: 1.0x damage, 1.0s base delay (slow but normal damage)
     Gun pistol(1.0f, 1.0f);
     player.weapons.push_back(&pistol);
-
-    // Second Gun: 1.0x damage, 0.1s base delay (fast machine gun)
-    Gun pistol2(1.0f, 2.f);
+    Gun pistol2(1.0f, 0.2f); // Zmieniłem delay na 0.2s dla szybszego strzelania
     player.weapons.push_back(&pistol2);
 
     float total_time = 0.f;
@@ -597,8 +574,13 @@ int main()
                 bool bulletRemoved = false;
 
                 for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
-                    sf::CircleShape bulletCirc(15.f);
+
+                    // --- POPRAWKA HITBOXA POCISKU Z POPRZEDNIEJ ODPOWIEDZI ---
+                    float collisionRadius = 8.f;
+                    sf::CircleShape bulletCirc(collisionRadius);
+                    bulletCirc.setOrigin(collisionRadius, collisionRadius);
                     bulletCirc.setPosition(it_bullet->getX(), it_bullet->getY());
+                    // --------------------------------------------------------
 
                     if (checkColision(bulletCirc, it_enemy->body)) {
                         score++;
@@ -633,30 +615,22 @@ int main()
         }
 
         if (weapon_spawned) {
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) {
-                player.setSpeed(player.getSpeed() + 30);
-                weapon_spawned = false;
-            }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) {
-                player.setAttack(player.getAttack() + 2);
-                weapon_spawned = false;
-            }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) {
-                player.setMAX_HP(player.getHp() + 20);
-                player.heal();
-                weapon_spawned = false;
-            }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) {
-                player.set_attack_speed(player.get_attack_speed() + 0.5f);
-                weapon_spawned = false;
-            }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getHp() + 20); player.heal(); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.5f); weapon_spawned = false; }
         }
 
         window.clear();
+
+        // --- NOWY KOD: Rysowanie tła (ZAWSZE PIERWSZE!) ---
+        window.draw(backgroundSprite);
+        // --------------------------------------------------
+
         player.renderBody(window);
         for (auto& e : enemies) {
-            window.draw(e.sprite); // Rysuje grafikę
-            window.draw(e.body);   // Rysuje hitbox (DODAJ TO)
+            window.draw(e.sprite);
+            // window.draw(e.body);   // Odkomentuj do debugowania hitboxa
         }
         for (auto& b : bullets) b.renderBody(window);
         if (weapon_spawned) spawnWeaponChoice(window);
