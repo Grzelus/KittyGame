@@ -215,8 +215,7 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
-        // Co 5 poziomów odblokuj nową broń (maks 4)
-        if (this->level % 2 == 0 && weaponsAvailable < 4) { // Zmienione na co 2 poziomy dla testu
+        if (this->level % 2 == 0 && weaponsAvailable < 4) { //co dwa poziomy
             weaponsAvailable++;
         }
     }
@@ -453,30 +452,67 @@ bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
 };
 
 void spawnUpgradeChoice(sf::RenderWindow& window) {
+	sf::Texture swordTexture;
+    if(!swordTexture.loadFromFile("assets/attack.png")){
+        sf::Image img; 
+        img.create(150, 150, sf::Color::White);
+        swordTexture.loadFromImage(img);
+	}
+    sf::Sprite attack_up(swordTexture);
+    attack_up.setScale(5.f, 5.f);
+    sf::Texture healthTexture;
+
+
+    if (!healthTexture.loadFromFile("assets/health.png")) {
+        sf::Image img;
+        img.create(150, 150, sf::Color::White);
+        healthTexture.loadFromImage(img);
+    }
+    sf::Sprite health_up(healthTexture);
+    health_up.setScale(5.f, 5.f);
+
+
+    sf::Texture speedTexture;
+    if (!speedTexture.loadFromFile("assets/speed.png")) {
+        sf::Image img;
+        img.create(150, 150, sf::Color::White);
+        speedTexture.loadFromImage(img);
+    }
+    sf::Sprite speed_up(speedTexture);
+	speed_up.setScale(5.f, 5.f);
+    
+    /*sf::Texture swordTexture;
+    if (!swordTexture.loadFromFile("assets/attackspeed.png")) {
+        sf::Image img;
+        img.create(80, 80, sf::Color::White);
+        swordTexture.loadFromImage(img);
+    }
+    sf::Sprite sprite(swordTexture);
+    */
     sf::RectangleShape table(sf::Vector2f(560.f, 220.f));
     table.setFillColor(sf::Color(0, 0, 200, 200));
     table.setPosition(120.f, 140.f);
 
     const float radius = 40.f;
-    sf::CircleShape f_up(radius, 3); f_up.setFillColor(sf::Color::Magenta); f_up.setPosition(170.f, 200.f);
-    sf::CircleShape s_up(radius, 4); s_up.setFillColor(sf::Color::Yellow);  s_up.setPosition(280.f, 200.f);
-    sf::CircleShape t_up(radius, 5); t_up.setFillColor(sf::Color::Cyan);    t_up.setPosition(390.f, 200.f);
-    sf::CircleShape fo_up(radius, 6); fo_up.setFillColor(sf::Color::Green);  fo_up.setPosition(500.f, 200.f);
+    speed_up.setPosition(170.f, 200.f);
+    attack_up.setPosition(280.f, 200.f);
+    health_up.setPosition(390.f, 200.f);
+   // .setPosition(500.f, 200.f);
 
     sf::Font font;
     // Ładowanie fontu - jeśli nie ma, użyjemy domyślnego mechanizmu SFML (brak tekstu)
     bool fontLoaded = font.loadFromFile("arial.ttf");
 
     window.draw(table);
-    window.draw(f_up);
-    window.draw(s_up);
-    window.draw(t_up);
-    window.draw(fo_up);
+    window.draw(attack_up);
+    window.draw(speed_up);
+    window.draw(health_up);
+   // window.draw(attackSpeed_up);
 
     if (fontLoaded) {
-        sf::Text choices("+ Speed     + Attack      + HP      + Atk Spd", font, 18);
+        sf::Text choices("  + Speed         + Attack            + HP        + Atk Spd", font, 18);
         choices.setFillColor(sf::Color::White);
-        choices.setPosition(160.f, 320.f);
+        choices.setPosition(160.f, 300.f);
 
         auto createText = [&](std::string str, sf::Vector2f pos) {
             sf::Text t(str, font, 24);
@@ -487,10 +523,10 @@ void spawnUpgradeChoice(sf::RenderWindow& window) {
             return t;
             };
 
-        window.draw(createText("1", f_up.getPosition()));
-        window.draw(createText("2", s_up.getPosition()));
-        window.draw(createText("3", t_up.getPosition()));
-        window.draw(createText("4", fo_up.getPosition()));
+       // window.draw(createText("1", speed_up.getPosition()));
+        //window.draw(createText("2", attack_up.getPosition()));
+        //window.draw(createText("3", health_up.getPosition()));
+        ///window.draw(createText("4", fo_up.getPosition()));
         window.draw(choices);
     }
 }
@@ -714,6 +750,8 @@ int main()
                         if (it_enemy->getHp() <= 0) {
                             it_enemy = enemies.erase(it_enemy);
 							player.mob_killed();
+
+                            //couter wrogów działa
 							std::cout << player.getKills() << std::endl;
                         }
 
