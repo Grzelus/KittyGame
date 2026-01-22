@@ -130,6 +130,7 @@ public:
     void setAttack(float new_attack) { this->attack = new_attack; }
     void set_attack_speed(float new_attack_speed) { this->attack_speed = new_attack_speed; }
 
+    float getMaxHp()const { return max_hp; }
     float getHp() const { return hp; }
     float getAttack() const { return attack; }
     float getSpeed() const { return speed; }
@@ -215,8 +216,7 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
-        // Co 5 poziomów odblokuj nową broń (maks 4)
-        if (this->level % 2 == 0 && weaponsAvailable < 4) { // Zmienione na co 2 poziomy dla testu
+        if (this->level % 2 == 0 && weaponsAvailable < 4) { //co dwa poziomy
             weaponsAvailable++;
         }
     }
@@ -250,6 +250,88 @@ public:
     int getKills() const { return this->killsCounter; }
 
     void mob_killed() { ++killsCounter; }
+
+    void DrawLabelsWithKillsHealth(sf::RenderWindow &window) {
+        // Ładuj textury i font raz
+        static sf::Texture healthTex;
+        static sf::Texture killsTex;
+        static sf::Font font;
+        static bool loaded = false;
+        if (!loaded) {
+            if (!healthTex.loadFromFile("assets/health.png")) {
+                sf::Image img; img.create(64, 64, sf::Color::Red);
+                healthTex.loadFromImage(img);
+            }
+            if (!killsTex.loadFromFile("assets/kill_counter.png")) {
+                sf::Image img; img.create(64, 64, sf::Color::Yellow);
+                killsTex.loadFromImage(img);
+            }
+            // próbuj załadować font, ale nie przerywaj jeśli nie ma
+            font.loadFromFile("arial.ttf");
+            healthTex.setSmooth(true);
+            killsTex.setSmooth(true);
+            loaded = true;
+        }
+
+        // Przygotuj sprite'y i skaluj proporcjonalnie do wysokości docelowej
+        sf::Sprite health_sprite(healthTex);
+        sf::Sprite kills_sprite(killsTex);
+        const float iconDisplayHeight = 40.f;
+        if (healthTex.getSize().y > 0) {
+            float s = iconDisplayHeight / static_cast<float>(healthTex.getSize().y);
+            health_sprite.setScale(s, s);
+        }
+        if (killsTex.getSize().y > 0) {
+            float s = iconDisplayHeight / static_cast<float>(killsTex.getSize().y);
+            kills_sprite.setScale(s, s);
+        }
+
+        // Wymiary po skalowaniu
+        sf::FloatRect hb = health_sprite.getGlobalBounds();
+        sf::FloatRect kb = kills_sprite.getGlobalBounds();
+        sf::FloatRect killsBackroundRect;
+        sf::FloatRect healthBackroundRect;
+
+        const float padding = 140.f;
+        const float spacing = 40.f;
+
+        // Pozycjonowanie w prawym górnym rogu
+        float healthX = static_cast<float>(WINDOW_WIDTH) - padding - hb.width;
+        float killsX = healthX - spacing - kb.width;
+        float topY = 5.f;
+
+        health_sprite.setPosition(healthX, topY);
+        kills_sprite.setPosition(killsX, topY);
+
+        // Rysuj ikony
+        window.draw(health_sprite);
+        window.draw(kills_sprite);
+
+        // Rysuj tekst (jeśli font załadowany)
+        if (font.getInfo().family != "") {
+            // HP — po lewej od ikony health
+            std::string hpStr = std::to_string(static_cast<int>(this->hp));
+            sf::Text hpText(hpStr, font, 16);
+            hpText.setFillColor(sf::Color::White);
+            hpText.setOutlineColor(sf::Color::Black);
+            hpText.setOutlineThickness(1.f);
+            sf::FloatRect th = hpText.getLocalBounds();
+            hpText.setOrigin(th.width, 0.f);
+            hpText.setPosition(health_sprite.getPosition().x + 80.f, topY + (hb.height - th.height) / 2.f - th.top);
+            window.draw(hpText);
+
+            // Kills — po prawej stronie ikony kills
+            std::string killsStr = std::to_string(this->killsCounter);
+            sf::Text killsText(killsStr, font, 16);
+            killsText.setFillColor(sf::Color::White);
+            killsText.setOutlineColor(sf::Color::Black);
+            killsText.setOutlineThickness(1.f);
+            sf::FloatRect tk = killsText.getLocalBounds();
+            killsText.setOrigin(0.f, 0.f);
+            killsText.setPosition(kills_sprite.getPosition().x + 55.f, topY + (kb.height - tk.height) / 2.f - tk.top);
+            window.draw(killsText);
+        }
+    }
 
     void update(float deltaTime, const sf::RenderWindow& window, bool canMove) {
         isMoving = false;
@@ -289,11 +371,13 @@ public:
             }
         }
 
+
         // Zmiana broni
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1) && weaponsAvailable >= 1) setWeapon(0);
-        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2) && weaponsAvailable >= 2) setWeapon(1);
-        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3) && weaponsAvailable >= 3) setWeapon(2);
-        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4) && weaponsAvailable >= 4) setWeapon(3);
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z) && weaponsAvailable >= 1) setWeapon(0);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::X) && weaponsAvailable >= 2) setWeapon(1);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::C) && weaponsAvailable >= 3) setWeapon(2);
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::V) && weaponsAvailable >= 4) setWeapon(3);
 
         // Obracanie sprite'a
         if (movement.x > 0) sprite.setScale(std::abs(sprite.getScale().x), sprite.getScale().y);
@@ -453,30 +537,67 @@ bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
 };
 
 void spawnUpgradeChoice(sf::RenderWindow& window) {
+	sf::Texture swordTexture;
+    if(!swordTexture.loadFromFile("assets/attack.png")){
+        sf::Image img; 
+        img.create(150, 150, sf::Color::White);
+        swordTexture.loadFromImage(img);
+	}
+    sf::Sprite attack_up(swordTexture);
+    attack_up.setScale(5.f, 5.f);
+    sf::Texture healthTexture;
+
+
+    if (!healthTexture.loadFromFile("assets/health.png")) {
+        sf::Image img;
+        img.create(150, 150, sf::Color::White);
+        healthTexture.loadFromImage(img);
+    }
+    sf::Sprite health_up(healthTexture);
+    health_up.setScale(5.f, 5.f);
+
+
+    sf::Texture speedTexture;
+    if (!speedTexture.loadFromFile("assets/speed.png")) {
+        sf::Image img;
+        img.create(150, 150, sf::Color::White);
+        speedTexture.loadFromImage(img);
+    }
+    sf::Sprite speed_up(speedTexture);
+	speed_up.setScale(5.f, 5.f);
+    
+    /*sf::Texture swordTexture;
+    if (!swordTexture.loadFromFile("assets/attackspeed.png")) {
+        sf::Image img;
+        img.create(80, 80, sf::Color::White);
+        swordTexture.loadFromImage(img);
+    }
+    sf::Sprite sprite(swordTexture);
+    */
     sf::RectangleShape table(sf::Vector2f(560.f, 220.f));
     table.setFillColor(sf::Color(0, 0, 200, 200));
     table.setPosition(120.f, 140.f);
 
     const float radius = 40.f;
-    sf::CircleShape f_up(radius, 3); f_up.setFillColor(sf::Color::Magenta); f_up.setPosition(170.f, 200.f);
-    sf::CircleShape s_up(radius, 4); s_up.setFillColor(sf::Color::Yellow);  s_up.setPosition(280.f, 200.f);
-    sf::CircleShape t_up(radius, 5); t_up.setFillColor(sf::Color::Cyan);    t_up.setPosition(390.f, 200.f);
-    sf::CircleShape fo_up(radius, 6); fo_up.setFillColor(sf::Color::Green);  fo_up.setPosition(500.f, 200.f);
+    speed_up.setPosition(170.f, 200.f);
+    attack_up.setPosition(280.f, 200.f);
+    health_up.setPosition(390.f, 200.f);
+   // .setPosition(500.f, 200.f);
 
     sf::Font font;
     // Ładowanie fontu - jeśli nie ma, użyjemy domyślnego mechanizmu SFML (brak tekstu)
     bool fontLoaded = font.loadFromFile("arial.ttf");
 
     window.draw(table);
-    window.draw(f_up);
-    window.draw(s_up);
-    window.draw(t_up);
-    window.draw(fo_up);
+    window.draw(attack_up);
+    window.draw(speed_up);
+    window.draw(health_up);
+   // window.draw(attackSpeed_up);
 
     if (fontLoaded) {
-        sf::Text choices("+ Speed     + Attack      + HP      + Atk Spd", font, 18);
+        sf::Text choices("  + Speed         + Attack            + HP        + Atk Spd", font, 18);
         choices.setFillColor(sf::Color::White);
-        choices.setPosition(160.f, 320.f);
+        choices.setPosition(160.f, 300.f);
 
         auto createText = [&](std::string str, sf::Vector2f pos) {
             sf::Text t(str, font, 24);
@@ -487,13 +608,16 @@ void spawnUpgradeChoice(sf::RenderWindow& window) {
             return t;
             };
 
-        window.draw(createText("1", f_up.getPosition()));
-        window.draw(createText("2", s_up.getPosition()));
-        window.draw(createText("3", t_up.getPosition()));
-        window.draw(createText("4", fo_up.getPosition()));
+       // window.draw(createText("1", speed_up.getPosition()));
+        //window.draw(createText("2", attack_up.getPosition()));
+        //window.draw(createText("3", health_up.getPosition()));
+        ///window.draw(createText("4", fo_up.getPosition()));
         window.draw(choices);
     }
 }
+
+
+
 
 void spawnGameOver(sf::RenderWindow& window) {
     sf::RectangleShape table(sf::Vector2f(400.f, 220.f));
@@ -714,7 +838,9 @@ int main()
                         if (it_enemy->getHp() <= 0) {
                             it_enemy = enemies.erase(it_enemy);
 							player.mob_killed();
-							std::cout << player.getKills() << std::endl;
+
+                            //couter wrogów działa
+							//std::cout << player.getKills() << std::endl;
                         }
 
                         bulletRemoved = true;
@@ -751,7 +877,7 @@ int main()
         if (weapon_spawned) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
-            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getHp() + 20); player.heal(); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getMaxHp()+20.f); player.heal(); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.2f); weapon_spawned = false; }
         }
 
@@ -761,9 +887,9 @@ int main()
 
         for (auto& e : enemies) window.draw(e.sprite);
         for (auto& b : bullets) b.renderBody(window);
-
+		
         player.renderBody(window);
-
+        player.DrawLabelsWithKillsHealth(window);
         if (weapon_spawned) spawnUpgradeChoice(window);
         if (game_over) spawnGameOver(window);
 
