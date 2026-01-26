@@ -514,7 +514,7 @@ public:
         shape.setOutlineColor(sf::Color::Red);
         shape.setOutlineThickness(2.f);
         shape.setPosition(x,y);
-        //shape.setOrigin(x, x);
+        shape.setOrigin(20.f, 20.f);
         return shape;
     }
 };
