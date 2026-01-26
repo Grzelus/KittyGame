@@ -394,7 +394,7 @@ public:
 };
 
 class Enemy : public Character {
-private:
+protected:
     float size = 20.f;
     sf::Vector2i frameSize;
     int numFrames;
@@ -480,6 +480,30 @@ public:
             int left = currentFrame * frameSize.x;
             sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
         }
+    }
+};
+
+class Boss : public Enemy {
+public:
+    Boss(float hp, float attack, sf::Texture& textureRef)
+        : Enemy(hp, attack, textureRef)
+    {
+        this->size = 60.f;
+        this->numFrames = 5;
+        this->speed = 100.f;
+        this->animationSpeed = 0.15f;
+
+
+        body.setRadius(size);
+        body.setOrigin(size, size);
+
+        this->frameSize = sf::Vector2i(32, 32);
+
+        float scaleFactor = (size * 2.f) / frameSize.x;
+        sprite.setScale(scaleFactor, scaleFactor);
+
+        sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+        sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
     }
 };
 
@@ -661,10 +685,10 @@ int main() {
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Survival Game");
     window.setFramerateLimit(60);
 
+    // TEXTURES
     std::map<std::string, sf::Texture> enemyTextures;
-
     if (!enemyTextures["enemy"].loadFromFile("assets/enemy.png")) {
-        enemyTextures["enemy"].create(32, 32); // Fallback blank
+        enemyTextures["enemy"].create(32, 32);
     }
     if (!enemyTextures["enemy_green"].loadFromFile("assets/enemy_green.png")) {
         enemyTextures["enemy_green"].create(32, 32);
@@ -673,245 +697,256 @@ int main() {
         enemyTextures["enemy_red"].create(32, 32);
     }
 
-        // Tło
-        sf::Texture backgroundTexture;
-        if (!backgroundTexture.loadFromFile("assets/background.png")) {
-            sf::Image img; img.create(WINDOW_WIDTH, WINDOW_HEIGHT, sf::Color(50, 100, 50));
-            backgroundTexture.loadFromImage(img);
+    sf::Texture bossTexture;
+    if (!bossTexture.loadFromFile("assets/boss.png")) {
+        bossTexture.create(64, 64);
+    }
+
+    sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile("assets/background.png")) {
+        sf::Image img; img.create(WINDOW_WIDTH, WINDOW_HEIGHT, sf::Color(50, 100, 50));
+        backgroundTexture.loadFromImage(img);
+    }
+    sf::Sprite backgroundSprite;
+    backgroundSprite.setTexture(backgroundTexture);
+    sf::Vector2u textureSize = backgroundTexture.getSize();
+    float scaleX = static_cast<float>(WINDOW_WIDTH) / textureSize.x;
+    float scaleY = static_cast<float>(WINDOW_HEIGHT) / textureSize.y;
+    backgroundSprite.setScale(scaleX, scaleY);
+
+    Player player(INITIAL_HP, INITIAL_MAX_HP, INITIAL_SPEED, INITIAL_ATTACK, INITIAL_ATTACK_SPEED);
+
+    Gun pistol(1.0f, 1.0f);
+    player.weapons.push_back(&pistol);
+
+    float total_time = 0.f;
+    int score = 0;
+    int wave = 0;
+    bool weapon_spawned = false;
+    bool game_over = false;
+
+    float fire_timer = 0.f;
+    int burst_shots_fired = 0;
+    float burst_delay_timer = 0.f;
+    bool is_bursting = false;
+
+    // BOSS CONFIGURATION
+    bool spawnBossAtStart = true;
+    Boss* boss = nullptr;
+
+    std::vector<Enemy> enemies;
+    std::vector<Bullet> bullets;
+
+    sf::Clock clock;
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) window.close();
         }
-        sf::Sprite backgroundSprite;
-        backgroundSprite.setTexture(backgroundTexture);
-        sf::Vector2u textureSize = backgroundTexture.getSize();
-        float scaleX = static_cast<float>(WINDOW_WIDTH) / textureSize.x;
-        float scaleY = static_cast<float>(WINDOW_HEIGHT) / textureSize.y;
-        backgroundSprite.setScale(scaleX, scaleY);
 
-        Player player(INITIAL_HP, INITIAL_MAX_HP, INITIAL_SPEED, INITIAL_ATTACK, INITIAL_ATTACK_SPEED);
+        float deltaTime = clock.restart().asSeconds();
+        bool active = !weapon_spawned && !game_over;
 
-        // Przykładowe bronie w wektorze (na razie używamy logiki switch w main)
-        Gun pistol(1.0f, 1.0f);
-        player.weapons.push_back(&pistol);
+        if (active) {
+            total_time += deltaTime;
 
-        float total_time = 0.f;
-        int score = 0;
-        int wave = 0;
-        bool weapon_spawned = false;
-        bool game_over = false;
-
-        // Zmienne do kontroli strzelania
-        float fire_timer = 0.f;
-        int burst_shots_fired = 0;
-        float burst_delay_timer = 0.f;
-        bool is_bursting = false;
-
-        std::vector<Enemy> enemies;
-        std::vector<Bullet> bullets;
-
-        sf::Clock clock;
-
-        while (window.isOpen()) {
-            sf::Event event;
-            while (window.pollEvent(event)) {
-                if (event.type == sf::Event::Closed) window.close();
+            // SPAWN BOSS
+            if (spawnBossAtStart && boss == nullptr) {
+                boss = new Boss(500.f, 20.f, bossTexture);
             }
 
-            float deltaTime = clock.restart().asSeconds();
-            bool active = !weapon_spawned && !game_over;
+            spawn_enemy_wave(total_time, enemies, wave, enemyTextures);
+            player.update(deltaTime, window, active);
 
-            if (active) {
-                total_time += deltaTime;
-                spawn_enemy_wave(total_time, enemies, wave, enemyTextures);
-                player.update(deltaTime, window, active);
+            fire_timer += deltaTime;
+            int weapon = player.getWeaponIndex();
+            sf::Vector2f pPos = player.getBody().getPosition();
 
-                // LOGIKA STRZELANIA
-                fire_timer += deltaTime;
-                int weapon = player.getWeaponIndex();
-
-                sf::Vector2f pPos = player.getBody().getPosition();
-                // Brak offsetu (radius) w body.getPosition() dla CircleShape oznacza lewy-górny róg,
-                // ale my ustawiliśmy setOrigin na środek. Więc getPosition() to środek gracza.
-
-                switch (weapon)
-                {
-                    // Rewolwer (standard)
-                    case 0:
-                    {
-                        // Delay: im większy attack_speed, tym szybciej strzela (np. 1.0s / attack_speed)
-                        float delay = 1.0f / player.get_attack_speed();
-                        if (fire_timer >= delay) {
-                            fire_timer = 0.f;
+            switch (weapon) {
+                case 0: {
+                    float delay = 1.0f / player.get_attack_speed();
+                    if (fire_timer >= delay) {
+                        fire_timer = 0.f;
+                        float angle = player.shooting_angle(window);
+                        bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
+                    }
+                    break;
+                }
+                case 1: {
+                    float delay = 0.2f / player.get_attack_speed();
+                    if (fire_timer >= delay) {
+                        fire_timer = 0.f;
+                        float angle = player.shooting_angle(window);
+                        float spread = (std::rand() % 20 - 10) * 0.01f;
+                        bullets.push_back(Bullet(player.getAttack() * 0.5f, angle + spread, pPos.x, pPos.y));
+                    }
+                    break;
+                }
+                case 2: {
+                    float main_delay = 1.5f / player.get_attack_speed();
+                    if (!is_bursting && fire_timer >= main_delay) {
+                        is_bursting = true;
+                        burst_shots_fired = 0;
+                        fire_timer = 0.f;
+                    }
+                    if (is_bursting) {
+                        burst_delay_timer += deltaTime;
+                        if (burst_delay_timer >= 0.1f) {
+                            burst_delay_timer = 0.f;
                             float angle = player.shooting_angle(window);
                             bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
-                        }
-                        break;
-                    }
-                        // Karabin maszynowy (szybki, słabszy)
-                    case 1:
-                    {
-                        float delay = 0.2f / player.get_attack_speed();
-                        if (fire_timer >= delay) {
-                            fire_timer = 0.f;
-                            float angle = player.shooting_angle(window);
-                            // Losowy rozrzut
-                            float spread = (std::rand() % 20 - 10) * 0.01f;
-                            bullets.push_back(Bullet(player.getAttack() * 0.5f, angle + spread, pPos.x, pPos.y));
-                        }
-                        break;
-                    }
-                        // Strzelba "seria" (Burst)
-                    case 2:
-                    {
-                        // Główny cooldown między seriami
-                        float main_delay = 1.5f / player.get_attack_speed();
-
-                        if (!is_bursting && fire_timer >= main_delay) {
-                            is_bursting = true;
-                            burst_shots_fired = 0;
-                            fire_timer = 0.f; // reset głównego licznika
-                        }
-
-                        if (is_bursting) {
-                            burst_delay_timer += deltaTime;
-                            // Szybkość strzałów wewnątrz serii
-                            if (burst_delay_timer >= 0.1f) {
-                                burst_delay_timer = 0.f;
-                                float angle = player.shooting_angle(window);
-                                bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
-                                burst_shots_fired++;
-
-                                if (burst_shots_fired >= 5) {
-                                    is_bursting = false;
-                                    fire_timer = 0.f; // start cooldownu po serii
-                                }
+                            burst_shots_fired++;
+                            if (burst_shots_fired >= 5) {
+                                is_bursting = false;
+                                fire_timer = 0.f;
                             }
                         }
-                        break;
                     }
-                        // Shotgun (rozrzut 3 pociski na raz)
-                    case 3:
-                    {
-                        float delay = 1.2f / player.get_attack_speed();
-                        if (fire_timer >= delay) {
-                            fire_timer = 0.f;
-                            float angle = player.shooting_angle(window);
+                    break;
+                }
+                case 3: {
+                    float delay = 1.2f / player.get_attack_speed();
+                    if (fire_timer >= delay) {
+                        fire_timer = 0.f;
+                        float angle = player.shooting_angle(window);
+                        bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
+                        bullets.push_back(Bullet(player.getAttack(), angle - 0.3f, pPos.x, pPos.y));
+                        bullets.push_back(Bullet(player.getAttack(), angle + 0.3f, pPos.x, pPos.y));
+                    }
+                    break;
+                }
+            }
 
-                            bullets.push_back(Bullet(player.getAttack(), angle, pPos.x, pPos.y));
-                            bullets.push_back(Bullet(player.getAttack(), angle - 0.3f, pPos.x, pPos.y));
-                            bullets.push_back(Bullet(player.getAttack(), angle + 0.3f, pPos.x, pPos.y));
-                        }
-                        break;
-                    }
-                    default:
-                        break;
+            for (auto& b : bullets) b.update(deltaTime);
+            bullets.erase(std::remove_if(bullets.begin(), bullets.end(), [&](const Bullet& b) {
+                return b.getX() < -50 || b.getX() > WINDOW_WIDTH + 50 || b.getY() < -50 || b.getY() > WINDOW_HEIGHT + 50;
+            }), bullets.end());
+
+            if (boss) {
+
+                sf::Vector2f bPos = boss->body.getPosition();
+
+                sf::Vector2f dir = pPos - bPos;
+                float len = std::hypot(dir.x, dir.y);
+                if (len > 0) {
+                    dir /= len;
+
+
+                    boss->body.move(dir * boss->getSpeed() * deltaTime);
+
+                    boss->update(deltaTime);
+                }
+                if (checkColision(player.getBody(), boss->body)) {
+                    player.attacked(window, boss->getAttack());
+                    if (player.getHp() <= 0) game_over = true;
+                }
+            }
+
+            for (auto it = enemies.begin(); it != enemies.end();) {
+                sf::Vector2f ePos = it->body.getPosition();
+                sf::Vector2f dir = pPos - ePos;
+                float len = std::hypot(dir.x, dir.y);
+
+                if (len != 0) {
+                    it->body.move((dir / len) * 70.f * deltaTime);
+                    it->update(deltaTime);
                 }
 
-                // Aktualizacja pocisków i usuwanie tych poza ekranem
-                for (auto& b : bullets) b.update(deltaTime);
-                bullets.erase(std::remove_if(bullets.begin(), bullets.end(), [&](const Bullet& b) {
-                    return b.getX() < -50 || b.getX() > WINDOW_WIDTH + 50 || b.getY() < -50 || b.getY() > WINDOW_HEIGHT + 50;
-                    }), bullets.end());
+                if (checkColision(player.getBody(), it->body)) {
+                    player.attacked(window, it->getAttack());
+                    if (player.getHp() <= 0) game_over = true;
+                    it = enemies.erase(it);
+                } else {
+                    ++it;
+                }
+            }
 
-                // Logika wrogów i kolizji
-                for (auto it = enemies.begin(); it != enemies.end();) {
-                    sf::Vector2f ePos = it->body.getPosition();
-                    sf::Vector2f dir = pPos - ePos;
-                    float len = std::hypot(dir.x, dir.y);
+            for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
+                bool bulletRemoved = false;
+                sf::CircleShape bulletHitbox(8.f);
+                bulletHitbox.setOrigin(8.f, 8.f);
+                bulletHitbox.setPosition(it_bullet->getX(), it_bullet->getY());
 
-                    if (len != 0) {
-                        it->body.move((dir / len) * 70.f * deltaTime);
-                        it->update(deltaTime);
+                // Bullet vs Boss
+                if (boss && checkColision(bulletHitbox, boss->body)) {
+                    boss->takeDamage(it_bullet->getDamage());
+                    if (boss->getHp() <= 0) {
+                        delete boss;
+                        boss = nullptr;
+                        score += 100;
+                        player.gainExperience(50);
                     }
-
-                    bool enemyRemoved = false;
-
-                    // Kolizja Gracz - Wróg
-                    if (checkColision(player.getBody(), it->body)) {
-                        player.attacked(window, it->getAttack());
-                        if (player.getHp() <= 0) {
-                            game_over = true;
-                        }
-                        it = enemies.erase(it);
-                        enemyRemoved = true;
-                    }
-
-                    if (!enemyRemoved) {
-                        ++it;
-                    }
+                    bulletRemoved = true;
                 }
 
-                // Kolizja Pocisk -> Wróg
-                for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
-                    bool bulletRemoved = false;
-                    sf::CircleShape bulletHitbox(8.f);
-                    bulletHitbox.setOrigin(8.f, 8.f);
-                    bulletHitbox.setPosition(it_bullet->getX(), it_bullet->getY());
-
+                // Bullet vs Enemies
+                if (!bulletRemoved) {
                     for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
                         if (checkColision(bulletHitbox, it_enemy->body)) {
                             score++;
-                            if (player.gainExperience(3)) {
-                                weapon_spawned = true;
-                            }
+                            if (player.gainExperience(3)) weapon_spawned = true;
                             it_enemy->takeDamage(it_bullet->getDamage());
                             if (it_enemy->getHp() <= 0) {
                                 it_enemy = enemies.erase(it_enemy);
                                 player.mob_killed();
-
-                                //couter wrogów działa
-                                //std::cout << player.getKills() << std::endl;
                             }
-
                             bulletRemoved = true;
                             break;
-                        }
-                        else {
+                        } else {
                             ++it_enemy;
                         }
                     }
+                }
 
-                    if (bulletRemoved) {
-                        it_bullet = bullets.erase(it_bullet);
-                    }
-                    else {
-                        ++it_bullet;
-                    }
+                if (bulletRemoved) {
+                    it_bullet = bullets.erase(it_bullet);
+                } else {
+                    ++it_bullet;
                 }
             }
-
-            // Restart gry
-            if (game_over) {
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
-                    game_over = false;
-                    score = 0; total_time = 0; wave = 0;
-                    enemies.clear(); bullets.clear();
-                    player.reset_stats();
-                    fire_timer = 0.f;
-                    is_bursting = false;
-                }
-                else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) window.close();
-            }
-
-            // Menu wyboru ulepszeń
-            if (weapon_spawned) {
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
-                else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
-                else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getMaxHp()+20.f); player.heal(); weapon_spawned = false; }
-                else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.2f); weapon_spawned = false; }
-            }
-
-            // RENDEROWANIE
-            window.clear();
-            window.draw(backgroundSprite);
-
-            for (auto& e : enemies) window.draw(e.sprite);
-            for (auto& b : bullets) b.renderBody(window);
-
-            player.renderBody(window);
-            player.DrawLabelsWithKillsHealth(window);
-            if (weapon_spawned) spawnUpgradeChoice(window);
-            if (game_over) spawnGameOver(window);
-
-            window.display();
         }
-        return 0;
+
+        if (game_over) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
+                game_over = false;
+                score = 0; total_time = 0; wave = 0;
+                enemies.clear(); bullets.clear();
+                player.reset_stats();
+                fire_timer = 0.f;
+                is_bursting = false;
+
+                if (boss) {
+                    delete boss;
+                    boss = nullptr;
+                }
+            } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) window.close();
+        }
+
+        if (weapon_spawned) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) { player.setSpeed(player.getSpeed() + 30); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) { player.setAttack(player.getAttack() + 2); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getMaxHp()+20.f); player.heal(); weapon_spawned = false; }
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.2f); weapon_spawned = false; }
+        }
+
+        window.clear();
+        window.draw(backgroundSprite);
+
+        for (auto& e : enemies) window.draw(e.sprite);
+
+        if (boss) {
+            boss->renderBody(window);
+            window.draw(boss->sprite);
+        }
+
+        for (auto& b : bullets) b.renderBody(window);
+        player.renderBody(window);
+        player.DrawLabelsWithKillsHealth(window);
+        if (weapon_spawned) spawnUpgradeChoice(window);
+        if (game_over) spawnGameOver(window);
+
+        window.display();
     }
+    return 0;
+}
