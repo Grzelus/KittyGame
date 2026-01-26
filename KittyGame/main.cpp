@@ -1,5 +1,4 @@
-﻿
-#include <SFML/Graphics.hpp>
+﻿#include <SFML/Graphics.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
@@ -8,15 +7,7 @@
 #include <algorithm>
 #include <random>
 
-//graificzki do upgradów
-//info o broniach
-//label o killach + counter
-//przeciwnicy z hp
-//boss
-//escape do menu startowego
-
-
-// --- KONFIGURACJA ---
+// --- CONFIGURATION ---
 int const WINDOW_WIDTH = 800;
 int const WINDOW_HEIGHT = 600;
 
@@ -24,9 +15,9 @@ float const INITIAL_HP = 100.f;
 float const INITIAL_MAX_HP = 100.f;
 float const INITIAL_SPEED = 300.f;
 float const INITIAL_ATTACK = 5.f;
-float const INITIAL_ATTACK_SPEED = 1.0f; // Zwiększona bazowa wartość dla lepszego odczucia
+float const INITIAL_ATTACK_SPEED = 1.0f;
 
-// --- KLASY BAZOWE ---
+// --- BASE CLASSES ---
 
 class GameObject {
 protected:
@@ -44,11 +35,12 @@ public:
 
     void setBody(sf::Shape* b) { body = b; }
     sf::Shape* getBodyPtr() const { return body; }
-};
 
-class Item : public GameObject {
-public:
-    void PlayerEffect() {}
+    // Helper to get position easily
+    sf::Vector2f getPosition() const {
+        if (body) return body->getPosition();
+        return sf::Vector2f(0,0);
+    }
 };
 
 class Bullet : public GameObject {
@@ -102,14 +94,92 @@ public:
     float getY() const { return y_position; }
     float getDamage() const { return damage; }
     float getRadius() const { return 8.f; }
-
-    bool operator==(const Bullet& other) const {
-        return (this->x_position == other.x_position) && (this->y_position == other.y_position);
-    }
 };
 
 sf::Texture Bullet::texture;
 bool Bullet::isTextureLoaded = false;
+
+// --- NEW CLASS: BossProjectile (Bomb Animation) ---
+class BossProjectile : public GameObject {
+private:
+    sf::Sprite sprite;
+    static sf::Texture texture;
+    static bool isTextureLoaded;
+
+    sf::Vector2i frameSize;
+    int numFrames;
+    int currentFrame;
+    float animationTimer;
+    float animationSpeed;
+
+public:
+    BossProjectile(float x, float y) {
+        // Load Texture
+        if (!isTextureLoaded) {
+            if (!texture.loadFromFile("assets/bomb.png")) {
+                sf::Image img;
+                img.create(160, 32, sf::Color::Magenta); // Fallback
+                texture.loadFromImage(img);
+            }
+            isTextureLoaded = true;
+        }
+
+        // Animation Setup
+        frameSize = sf::Vector2i(32, 32);
+        numFrames = 5;
+        currentFrame = 0;
+        animationTimer = 0.f;
+        animationSpeed = 0.1f;
+
+        sprite.setTexture(texture);
+        sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
+        sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
+        sprite.setPosition(x, y);
+        sprite.setScale(2.f, 2.f);
+
+        // Physical Body (Hitbox)
+        sf::CircleShape* hitbox = new sf::CircleShape(15.f);
+        hitbox->setOrigin(15.f, 15.f);
+        hitbox->setPosition(x, y);
+        hitbox->setFillColor(sf::Color::Transparent);
+        hitbox->setOutlineColor(sf::Color::Red);
+        hitbox->setOutlineThickness(1.f);
+        setBody(hitbox);
+    }
+
+    ~BossProjectile() {
+        if (body) delete body;
+    }
+
+    void update(float deltaTime) {
+        // Animate
+        animationTimer += deltaTime;
+        if (animationTimer >= animationSpeed) {
+            animationTimer = 0.f;
+            currentFrame = (currentFrame + 1) % numFrames;
+            int left = currentFrame * frameSize.x;
+            sprite.setTextureRect(sf::IntRect(left, 0, frameSize.x, frameSize.y));
+        }
+
+        // Sync Sprite
+        if (body) {
+            sprite.setPosition(body->getPosition());
+        }
+    }
+
+    void renderBody(sf::RenderWindow& window) override {
+        window.draw(sprite);
+        // if(body) window.draw(*body); // Uncomment to see hitbox
+    }
+
+    sf::CircleShape* getHitbox() {
+        return dynamic_cast<sf::CircleShape*>(body);
+    }
+};
+
+sf::Texture BossProjectile::texture;
+bool BossProjectile::isTextureLoaded = false;
+
 
 class Character : public GameObject {
 protected:
@@ -126,7 +196,7 @@ public:
     void takeDamage(float dmg) { hp -= dmg; }
     void heal() { this->hp = max_hp; }
     void setMAX_HP(float new_MAX_HP) { this->max_hp = new_MAX_HP;}
-	void setHp(float new_hp) { this->hp = new_hp; }
+    void setHp(float new_hp) { this->hp = new_hp; }
     void setSpeed(float new_speed) { this->speed = new_speed; }
     void setAttack(float new_attack) { this->attack = new_attack; }
     void set_attack_speed(float new_attack_speed) { this->attack_speed = new_attack_speed; }
@@ -138,9 +208,7 @@ public:
     float get_attack_speed() const { return attack_speed; }
 };
 
-// Forward declaration
 class Weapon;
-bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b);
 
 class Player : public Character {
 private:
@@ -150,7 +218,7 @@ private:
     int level = 1;
     int chosen_weapon = 0;
     int weaponsAvailable = 1;
-	int killsCounter = 0;
+    int killsCounter = 0;
 
     sf::Sprite sprite;
     sf::Texture texture;
@@ -166,7 +234,7 @@ public:
 
     Player(float o_hp = 100, float o_MAX_HP = 100, float o_speed = 300, float o_attack = 5, float attack_speed = 1.f)
         : Character(o_hp, o_MAX_HP, o_speed, o_attack, attack_speed),
-        size(25.f), // Zmniejszyłem lekko hitbox
+        size(25.f),
         bodyShape(size)
     {
         bodyShape.setPosition(WINDOW_WIDTH / 2 - size, WINDOW_HEIGHT / 2 - size);
@@ -200,7 +268,6 @@ public:
 
     void renderBody(sf::RenderWindow& window) override {
         if (body) {
-            // window.draw(*body); // Odkomentuj do debugowania hitboxa
             window.draw(sprite);
         }
     }
@@ -218,7 +285,7 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
-        if (this->level % 2 == 0 && weaponsAvailable < 4) { //co dwa poziomy
+        if (this->level % 2 == 0 && weaponsAvailable < 4) {
             weaponsAvailable++;
         }
     }
@@ -238,7 +305,6 @@ public:
     }
 
     int getWeaponIndex() const { return this->chosen_weapon; }
-
     void setWeapon(int weaponIndex) { this->chosen_weapon = weaponIndex; }
 
     float shooting_angle(const sf::RenderWindow& window) {
@@ -251,11 +317,9 @@ public:
         takeDamage(dmg);
     }
     int getKills() const { return this->killsCounter; }
-
     void mob_killed() { ++killsCounter; }
 
     void DrawLabelsWithKillsHealth(sf::RenderWindow &window) {
-        // Ładuj textury i font raz
         static sf::Texture healthTex;
         static sf::Texture killsTex;
         static sf::Font font;
@@ -269,14 +333,12 @@ public:
                 sf::Image img; img.create(64, 64, sf::Color::Yellow);
                 killsTex.loadFromImage(img);
             }
-            // próbuj załadować font, ale nie przerywaj jeśli nie ma
             font.loadFromFile("arial.ttf");
             healthTex.setSmooth(true);
             killsTex.setSmooth(true);
             loaded = true;
         }
 
-        // Przygotuj sprite'y i skaluj proporcjonalnie do wysokości docelowej
         sf::Sprite health_sprite(healthTex);
         sf::Sprite kills_sprite(killsTex);
         const float iconDisplayHeight = 40.f;
@@ -289,16 +351,10 @@ public:
             kills_sprite.setScale(s, s);
         }
 
-        // Wymiary po skalowaniu
         sf::FloatRect hb = health_sprite.getGlobalBounds();
         sf::FloatRect kb = kills_sprite.getGlobalBounds();
-        sf::FloatRect killsBackroundRect;
-        sf::FloatRect healthBackroundRect;
-
         const float padding = 140.f;
         const float spacing = 40.f;
-
-        // Pozycjonowanie w prawym górnym rogu
         float healthX = static_cast<float>(WINDOW_WIDTH) - padding - hb.width;
         float killsX = healthX - spacing - kb.width;
         float topY = 5.f;
@@ -306,13 +362,10 @@ public:
         health_sprite.setPosition(healthX, topY);
         kills_sprite.setPosition(killsX, topY);
 
-        // Rysuj ikony
         window.draw(health_sprite);
         window.draw(kills_sprite);
 
-        // Rysuj tekst (jeśli font załadowany)
         if (font.getInfo().family != "") {
-            // HP — po lewej od ikony health
             std::string hpStr = std::to_string(static_cast<int>(this->hp));
             sf::Text hpText(hpStr, font, 16);
             hpText.setFillColor(sf::Color::White);
@@ -323,7 +376,6 @@ public:
             hpText.setPosition(health_sprite.getPosition().x + 80.f, topY + (hb.height - th.height) / 2.f - th.top);
             window.draw(hpText);
 
-            // Kills — po prawej stronie ikony kills
             std::string killsStr = std::to_string(this->killsCounter);
             sf::Text killsText(killsStr, font, 16);
             killsText.setFillColor(sf::Color::White);
@@ -351,10 +403,7 @@ public:
         }
 
         sf::Vector2u winSize = window.getSize();
-        float diameter = bodyShape.getRadius() * 2.f;
         sf::Vector2f pos = bodyShape.getPosition();
-
-        // Kolizja ze ścianami (uwzględniając origin na środku)
         float radius = bodyShape.getRadius();
         if (pos.x - radius <= 0.f && movement.x < 0.f) movement.x = 0.f;
         if (pos.x + radius >= static_cast<float>(winSize.x) && movement.x > 0.f) movement.x = 0.f;
@@ -374,20 +423,13 @@ public:
             }
         }
 
-
-        // Zmiana broni
-
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z) && weaponsAvailable >= 1) setWeapon(0);
         else if (sf::Keyboard::isKeyPressed(sf::Keyboard::X) && weaponsAvailable >= 2) setWeapon(1);
         else if (sf::Keyboard::isKeyPressed(sf::Keyboard::C) && weaponsAvailable >= 3) setWeapon(2);
         else if (sf::Keyboard::isKeyPressed(sf::Keyboard::V) && weaponsAvailable >= 4) setWeapon(3);
 
-        // Obracanie sprite'a
         if (movement.x > 0) sprite.setScale(std::abs(sprite.getScale().x), sprite.getScale().y);
         if (movement.x < 0) sprite.setScale(-std::abs(sprite.getScale().x), sprite.getScale().y);
-        
-
-
     }
 
     const sf::CircleShape& getBody() const { return bodyShape; }
@@ -407,16 +449,13 @@ public:
     float x, y;
     sf::CircleShape body;
     sf::Sprite sprite;
-
     std::string spriteName;
-
 
     Enemy(float hp, float attack, sf::Texture& textureRef)
         : Character(hp, hp, 1.f, attack, 1.f), spriteName(spriteName)
     {
        sprite.setTexture(textureRef);
 
-        // Animation setup
         frameSize = sf::Vector2i(32, 32);
         numFrames = 4;
         currentFrame = 0;
@@ -431,7 +470,6 @@ public:
 
         float scaleFactor = (size * 2.f) / frameSize.x;
         sprite.setScale(scaleFactor, scaleFactor);
-
         sprite.setPosition(body.getPosition());
 
         this->setAttack(attack);
@@ -439,7 +477,6 @@ public:
         this->setHp(hp);
     }
 
-    // ... (Keep calculate_spawn_position, spawn_hitbox, and update exactly as they were) ...
     void calculate_spawn_position() {
         static std::random_device rd;
         static std::mt19937 gen(rd());
@@ -494,7 +531,6 @@ public:
         this->speed = 100.f;
         this->animationSpeed = 0.15f;
 
-
         body.setRadius(size);
         body.setOrigin(size, size);
 
@@ -506,21 +542,7 @@ public:
         sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
         sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
     }
-
-    sf::CircleShape boss_attack(float x, float y) {
-
-        sf::CircleShape shape(20.f);
-        shape.setFillColor(sf::Color::Yellow);
-        shape.setOutlineColor(sf::Color::Red);
-        shape.setOutlineThickness(2.f);
-        shape.setPosition(x,y);
-        shape.setOrigin(20.f, 20.f);
-        return shape;
-    }
 };
-
-
-// --- BRONIE ---
 
 class Weapon {
 protected:
@@ -557,8 +579,6 @@ public:
     }
 };
 
-// --- FUNKCJE POMOCNICZE ---
-
 bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
     sf::Vector2f aPos = a.getPosition();
     sf::Vector2f bPos = b.getPosition();
@@ -567,108 +587,86 @@ bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b) {
 };
 
 void spawnUpgradeChoice(sf::RenderWindow& window) {
-	sf::Texture swordTexture;
-    if(!swordTexture.loadFromFile("assets/attack.png")){
-        sf::Image img; 
-        img.create(150, 150, sf::Color::White);
-        swordTexture.loadFromImage(img);
-	}
-    sf::Sprite attack_up(swordTexture);
-    attack_up.setScale(5.f, 5.f);
-    sf::Texture healthTexture;
+    static sf::Texture bgTexture;
+    static bool bgLoaded = false;
 
-
-    if (!healthTexture.loadFromFile("assets/health.png")) {
-        sf::Image img;
-        img.create(150, 150, sf::Color::White);
-        healthTexture.loadFromImage(img);
+    if (!bgLoaded) {
+        if (!bgTexture.loadFromFile("assets/weapon_screen.png")) {
+            sf::Image img;
+            img.create(560, 220, sf::Color(0, 0, 200));
+            bgTexture.loadFromImage(img);
+        }
+        bgLoaded = true;
     }
-    sf::Sprite health_up(healthTexture);
-    health_up.setScale(5.f, 5.f);
+
+    sf::Sprite background(bgTexture);
+    background.setPosition(120.f, 140.f);
 
 
-    sf::Texture speedTexture;
-    if (!speedTexture.loadFromFile("assets/speed.png")) {
-        sf::Image img;
-        img.create(150, 150, sf::Color::White);
-        speedTexture.loadFromImage(img);
+    static sf::Texture swordTexture;
+    static sf::Texture healthTexture;
+    static sf::Texture speedTexture;
+    static sf::Texture bowTexture;
+    static bool iconsLoaded = false;
+
+    if (!iconsLoaded) {
+        if(!swordTexture.loadFromFile("assets/attack.png")){ sf::Image img; img.create(32, 32, sf::Color::White); swordTexture.loadFromImage(img); }
+        if(!healthTexture.loadFromFile("assets/health.png")){ sf::Image img; img.create(32, 32, sf::Color::White); healthTexture.loadFromImage(img); }
+        if(!speedTexture.loadFromFile("assets/speed.png")){ sf::Image img; img.create(32, 32, sf::Color::White); speedTexture.loadFromImage(img); }
+        if(!bowTexture.loadFromFile("assets/attack_speed.png")){ sf::Image img; img.create(32, 32, sf::Color::White); bowTexture.loadFromImage(img); }
+        iconsLoaded = true;
     }
-    sf::Sprite speed_up(speedTexture);
-	speed_up.setScale(5.f, 5.f);
 
-    sf::Texture bowTexture;
-    if(!bowTexture.loadFromFile("assets/attack_speed.png")){
-        sf::Image img;
-        img.create(150, 150, sf::Color::White);
-        bowTexture.loadFromImage(img);
-    }
-    sf::Sprite attack_speed_up(bowTexture);
-    attack_speed_up.setScale(5.f, 5.f);
+    sf::Sprite attack_up(swordTexture);      attack_up.setScale(5.f, 5.f);
+    sf::Sprite health_up(healthTexture);     health_up.setScale(5.f, 5.f);
+    sf::Sprite speed_up(speedTexture);       speed_up.setScale(5.f, 5.f);
+    sf::Sprite attack_speed_up(bowTexture);  attack_speed_up.setScale(5.f, 5.f);
 
 
-    sf::RectangleShape table(sf::Vector2f(560.f, 220.f));
-    table.setFillColor(sf::Color(0, 0, 200, 200));
-    table.setPosition(120.f, 140.f);
-
-    const float radius = 40.f;
     speed_up.setPosition(170.f, 200.f);
     attack_up.setPosition(280.f, 200.f);
     health_up.setPosition(390.f, 200.f);
     attack_speed_up.setPosition(500.f, 200.f);
 
-    sf::Font font;
-    // Ładowanie fontu - jeśli nie ma, użyjemy domyślnego mechanizmu SFML (brak tekstu)
-    bool fontLoaded = font.loadFromFile("arial.ttf");
-
-    window.draw(table);
+    window.draw(background);
     window.draw(attack_up);
     window.draw(speed_up);
     window.draw(health_up);
     window.draw(attack_speed_up);
 
-    if (fontLoaded) {
+
+    sf::Font font;
+
+    if (font.loadFromFile("arial.ttf")) {
         sf::Text choices("  + Speed         + Attack            + HP        + Atk Spd", font, 18);
         choices.setFillColor(sf::Color::White);
         choices.setPosition(160.f, 300.f);
-
-        auto createText = [&](std::string str, sf::Vector2f pos) {
-            sf::Text t(str, font, 24);
-            t.setFillColor(sf::Color::Black);
-            sf::FloatRect b = t.getLocalBounds();
-            t.setOrigin(b.left + b.width / 2.f, b.top + b.height / 2.f);
-            t.setPosition(pos + sf::Vector2f(radius, radius));
-            return t;
-            };
-
-       // window.draw(createText("1", speed_up.getPosition()));
-        //window.draw(createText("2", attack_up.getPosition()));
-        //window.draw(createText("3", health_up.getPosition()));
-        ///window.draw(createText("4", fo_up.getPosition()));
         window.draw(choices);
     }
 }
 
-
-
-
 void spawnGameOver(sf::RenderWindow& window) {
-    sf::RectangleShape table(sf::Vector2f(400.f, 220.f));
-    table.setFillColor(sf::Color(20, 20, 80, 220));
-    table.setPosition(200.f, 150.f);
+    static sf::Texture texture;
+    static bool isLoaded = false;
 
-    window.draw(table);
+    if (!isLoaded) {
+        if (!texture.loadFromFile("assets/gameover.png")) {
+            sf::Image img;
+            img.create(400, 220, sf::Color::Red);
+            texture.loadFromImage(img);
+        }
 
-    sf::Font font;
-    if (font.loadFromFile("arial.ttf")) {
-        sf::Text go_text("GAME OVER!!", font, 36);
-        go_text.setPosition(250.f, 180.f);
-        sf::Text hint("R - Restart, Q - Quit", font, 18);
-        hint.setPosition(280.f, 280.f);
-        window.draw(go_text);
-        window.draw(hint);
+        texture.setSmooth(true);
+        isLoaded = true;
     }
-}
 
+
+    sf::Sprite sprite(texture);
+
+    sprite.setPosition(200.f, 150.f);
+
+    window.draw(sprite);
+}
 void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave, std::map<std::string, sf::Texture>& textures) {
     int current_wave_count = static_cast<int>(total_time / 10);
     if (current_wave_count >= wave) {
@@ -676,43 +674,26 @@ void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave, 
         for (int i = 0; i < 5 + wave; i++) {
             int randomSpriteNumber = rand() % 3;
             std::string key;
-            if (randomSpriteNumber == 0) {
-                key = "enemy";
-            }
-            else if (randomSpriteNumber == 1) {
-                key = "enemy_green";
-            }
-            else {
-                key = "enemy_red";
-            }
+            if (randomSpriteNumber == 0) key = "enemy";
+            else if (randomSpriteNumber == 1) key = "enemy_green";
+            else key = "enemy_red";
             enemies.push_back(Enemy(10+(current_wave_count-1),current_wave_count, textures[key]));
         }
     }
 }
-
-// --- MAIN ---
 
 int main() {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Survival Game");
     window.setFramerateLimit(60);
 
-    // TEXTURES
     std::map<std::string, sf::Texture> enemyTextures;
-    if (!enemyTextures["enemy"].loadFromFile("assets/enemy.png")) {
-        enemyTextures["enemy"].create(32, 32);
-    }
-    if (!enemyTextures["enemy_green"].loadFromFile("assets/enemy_green.png")) {
-        enemyTextures["enemy_green"].create(32, 32);
-    }
-    if (!enemyTextures["enemy_red"].loadFromFile("assets/enemy_red.png")) {
-        enemyTextures["enemy_red"].create(32, 32);
-    }
+    if (!enemyTextures["enemy"].loadFromFile("assets/enemy.png")) enemyTextures["enemy"].create(32, 32);
+    if (!enemyTextures["enemy_green"].loadFromFile("assets/enemy_green.png")) enemyTextures["enemy_green"].create(32, 32);
+    if (!enemyTextures["enemy_red"].loadFromFile("assets/enemy_red.png")) enemyTextures["enemy_red"].create(32, 32);
 
     sf::Texture bossTexture;
-    if (!bossTexture.loadFromFile("assets/boss.png")) {
-        bossTexture.create(64, 64);
-    }
+    if (!bossTexture.loadFromFile("assets/boss.png")) bossTexture.create(64, 64);
 
     sf::Texture backgroundTexture;
     if (!backgroundTexture.loadFromFile("assets/background.png")) {
@@ -727,7 +708,6 @@ int main() {
     backgroundSprite.setScale(scaleX, scaleY);
 
     Player player(INITIAL_HP, INITIAL_MAX_HP, INITIAL_SPEED, INITIAL_ATTACK, INITIAL_ATTACK_SPEED);
-
     Gun pistol(1.0f, 1.0f);
     player.weapons.push_back(&pistol);
 
@@ -742,13 +722,14 @@ int main() {
     float burst_delay_timer = 0.f;
     bool is_bursting = false;
 
-    // BOSS CONFIGURATION
     bool spawnBossAtStart = true;
     Boss* boss = nullptr;
 
     std::vector<Enemy> enemies;
     std::vector<Bullet> bullets;
-    std::vector<sf::CircleShape> bossAttacks;
+
+    // CHANGED: Use Pointers for Boss Projectiles
+    std::vector<BossProjectile*> bossAttacks;
     float bossAttackTimer = 0.f;
 
     sf::Clock clock;
@@ -765,7 +746,6 @@ int main() {
         if (active) {
             total_time += deltaTime;
 
-            // SPAWN BOSS
             if (spawnBossAtStart && boss == nullptr) {
                 boss = new Boss(500.f, 20.f, bossTexture);
             }
@@ -838,30 +818,30 @@ int main() {
             }), bullets.end());
 
             if (boss) {
-
                 sf::Vector2f bPos = boss->body.getPosition();
-
                 sf::Vector2f dir = pPos - bPos;
                 float len = std::hypot(dir.x, dir.y);
                 if (len > 0) {
                     dir /= len;
-
-
                     boss->body.move(dir * boss->getSpeed() * deltaTime);
-
                     boss->update(deltaTime);
                 }
 
                 bossAttackTimer += deltaTime;
                 if (bossAttackTimer >= 2.f) {
                     bossAttackTimer = 0.f;
-                    bossAttacks.push_back(boss->boss_attack(bPos.x, bPos.y));
+                    bossAttacks.push_back(new BossProjectile(bPos.x, bPos.y));
                 }
 
                 if (checkColision(player.getBody(), boss->body)) {
                     player.attacked(window, boss->getAttack());
                     if (player.getHp() <= 0) game_over = true;
                 }
+            }
+
+            // Update Boss Projectiles
+            for(auto* proj : bossAttacks) {
+                proj->update(deltaTime);
             }
 
             for (auto it = enemies.begin(); it != enemies.end();) {
@@ -883,6 +863,7 @@ int main() {
                 }
             }
 
+            // COLLISION LOOP
             for (auto it_bullet = bullets.begin(); it_bullet != bullets.end();) {
                 bool bulletRemoved = false;
                 sf::CircleShape bulletHitbox(8.f);
@@ -901,22 +882,23 @@ int main() {
                     bulletRemoved = true;
                 }
 
-                // 2. Bullet vs Boss Attacks
+                // 2. Bullet vs Boss Projectiles
                 if (!bulletRemoved) {
                     for (auto it_attack = bossAttacks.begin(); it_attack != bossAttacks.end(); ) {
-                        if (checkColision(bulletHitbox, *it_attack)) {
-                            // Destroy Attack
+                        // Safe Cast
+                        sf::CircleShape* attackShape = (*it_attack)->getHitbox();
+                        if (attackShape && checkColision(bulletHitbox, *attackShape)) {
+                            delete *it_attack;
                             it_attack = bossAttacks.erase(it_attack);
-                            // Destroy Bullet
                             bulletRemoved = true;
-                            break; // Bullet is gone, stop checking attacks
+                            break;
                         } else {
                             ++it_attack;
                         }
                     }
                 }
 
-
+                // 3. Bullet vs Enemies
                 if (!bulletRemoved) {
                     for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
                         if (checkColision(bulletHitbox, it_enemy->body)) {
@@ -928,14 +910,13 @@ int main() {
                                 player.mob_killed();
                             }
                             bulletRemoved = true;
-                            break; // Bullet is gone
+                            break;
                         } else {
                             ++it_enemy;
                         }
                     }
                 }
 
-                // Final cleanup
                 if (bulletRemoved) {
                     it_bullet = bullets.erase(it_bullet);
                 } else {
@@ -944,17 +925,21 @@ int main() {
             }
         }
 
-        for (auto bossAttack = bossAttacks.begin(); bossAttack != bossAttacks.end();) {
-            if (checkColision(player.getBody(), *bossAttack)) {
-                player.takeDamage(boss->getAttack());
+        // 4. Boss Projectile vs Player
+        for (auto it = bossAttacks.begin(); it != bossAttacks.end();) {
+            sf::CircleShape* attackShape = (*it)->getHitbox();
+            if (attackShape && checkColision(player.getBody(), *attackShape)) {
+                player.takeDamage(15.f); // Damage
                 if (player.getHp() <= 0) game_over = true;
 
-                bossAttacks.erase(bossAttack);
+                delete *it;
+                it = bossAttacks.erase(it);
             }
             else {
-                ++bossAttack;
+                ++it;
             }
         }
+
         if (game_over) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
                 game_over = false;
@@ -963,6 +948,9 @@ int main() {
                 player.reset_stats();
                 fire_timer = 0.f;
                 is_bursting = false;
+
+                // CLEANUP PROJECTILES
+                for(auto* proj : bossAttacks) delete proj;
                 bossAttacks.clear();
 
                 if (boss) {
@@ -988,19 +976,18 @@ int main() {
             boss->renderBody(window);
             window.draw(boss->sprite);
         }
-        for (auto& attack : bossAttacks) window.draw(attack);
+        for (auto* attack : bossAttacks) attack->renderBody(window);
+
         for (auto& b : bullets) {
             b.renderBody(window);
-
-            sf::CircleShape debugHitbox(8.f);
+            // Debug Hitbox
+            /*sf::CircleShape debugHitbox(8.f);
             debugHitbox.setOrigin(8.f, 8.f);
             debugHitbox.setPosition(b.getX(), b.getY());
             debugHitbox.setFillColor(sf::Color(255, 0, 0, 150));
-            debugHitbox.setOutlineColor(sf::Color::Green);
-            debugHitbox.setOutlineThickness(1.f);
-
-            window.draw(debugHitbox);
+            window.draw(debugHitbox);*/
         }
+
         player.renderBody(window);
         player.DrawLabelsWithKillsHealth(window);
         if (weapon_spawned) spawnUpgradeChoice(window);
