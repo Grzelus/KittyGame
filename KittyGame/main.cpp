@@ -722,7 +722,7 @@ int main() {
     float burst_delay_timer = 0.f;
     bool is_bursting = false;
 
-    bool spawnBossAtStart = true;
+    bool spawnBossAtStart = false;
     Boss* boss = nullptr;
 
     std::vector<Enemy> enemies;
@@ -750,7 +750,7 @@ int main() {
                 boss = new Boss(500.f, 20.f, bossTexture);
             }
 
-            spawn_enemy_wave(total_time, enemies, wave, enemyTextures);
+            if (!boss) { spawn_enemy_wave(total_time, enemies, wave, enemyTextures); }
             player.update(deltaTime, window, active);
 
             fire_timer += deltaTime;
@@ -966,13 +966,16 @@ int main() {
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getMaxHp()+20.f); player.heal(); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.2f); weapon_spawned = false; }
         }
+        if(!boss && total_time >= 60.f) {
+            boss = new Boss(500.f, 20.f, bossTexture);
+		}
 
         window.clear();
         window.draw(backgroundSprite);
 
         for (auto& e : enemies) window.draw(e.sprite);
 
-        if (boss) {
+        if(boss) {
             boss->renderBody(window);
             window.draw(boss->sprite);
         }
