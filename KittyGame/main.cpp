@@ -140,6 +140,7 @@ public:
 
 // Forward declaration
 class Weapon;
+bool checkColision(const sf::CircleShape& a, const sf::CircleShape& b);
 
 class Player : public Character {
 private:
@@ -505,6 +506,17 @@ public:
         sprite.setTextureRect(sf::IntRect(0, 0, frameSize.x, frameSize.y));
         sprite.setOrigin(frameSize.x / 2.f, frameSize.y / 2.f);
     }
+
+    sf::CircleShape boss_attack(float x, float y) {
+
+        sf::CircleShape shape(20.f);
+        shape.setFillColor(sf::Color::Yellow);
+        shape.setOutlineColor(sf::Color::Red);
+        shape.setOutlineThickness(2.f);
+        shape.setPosition(x,y);
+        //shape.setOrigin(x, x);
+        return shape;
+    }
 };
 
 
@@ -736,6 +748,8 @@ int main() {
 
     std::vector<Enemy> enemies;
     std::vector<Bullet> bullets;
+    std::vector<sf::CircleShape> bossAttacks;
+    float bossAttackTimer = 0.f;
 
     sf::Clock clock;
 
@@ -837,6 +851,13 @@ int main() {
 
                     boss->update(deltaTime);
                 }
+
+                bossAttackTimer += deltaTime;
+                if (bossAttackTimer >= 2.f) {
+                    bossAttackTimer = 0.f;
+                    bossAttacks.push_back(boss->boss_attack(bPos.x, bPos.y));
+                }
+
                 if (checkColision(player.getBody(), boss->body)) {
                     player.attacked(window, boss->getAttack());
                     if (player.getHp() <= 0) game_over = true;
@@ -868,7 +889,7 @@ int main() {
                 bulletHitbox.setOrigin(8.f, 8.f);
                 bulletHitbox.setPosition(it_bullet->getX(), it_bullet->getY());
 
-                // Bullet vs Boss
+                // 1. Bullet vs Boss Body
                 if (boss && checkColision(bulletHitbox, boss->body)) {
                     boss->takeDamage(it_bullet->getDamage());
                     if (boss->getHp() <= 0) {
@@ -880,7 +901,22 @@ int main() {
                     bulletRemoved = true;
                 }
 
-                // Bullet vs Enemies
+                // 2. Bullet vs Boss Attacks
+                if (!bulletRemoved) {
+                    for (auto it_attack = bossAttacks.begin(); it_attack != bossAttacks.end(); ) {
+                        if (checkColision(bulletHitbox, *it_attack)) {
+                            // Destroy Attack
+                            it_attack = bossAttacks.erase(it_attack);
+                            // Destroy Bullet
+                            bulletRemoved = true;
+                            break; // Bullet is gone, stop checking attacks
+                        } else {
+                            ++it_attack;
+                        }
+                    }
+                }
+
+
                 if (!bulletRemoved) {
                     for (auto it_enemy = enemies.begin(); it_enemy != enemies.end();) {
                         if (checkColision(bulletHitbox, it_enemy->body)) {
@@ -892,13 +928,14 @@ int main() {
                                 player.mob_killed();
                             }
                             bulletRemoved = true;
-                            break;
+                            break; // Bullet is gone
                         } else {
                             ++it_enemy;
                         }
                     }
                 }
 
+                // Final cleanup
                 if (bulletRemoved) {
                     it_bullet = bullets.erase(it_bullet);
                 } else {
@@ -907,6 +944,17 @@ int main() {
             }
         }
 
+        for (auto bossAttack = bossAttacks.begin(); bossAttack != bossAttacks.end();) {
+            if (checkColision(player.getBody(), *bossAttack)) {
+                player.takeDamage(boss->getAttack());
+                if (player.getHp() <= 0) game_over = true;
+
+                bossAttacks.erase(bossAttack);
+            }
+            else {
+                ++bossAttack;
+            }
+        }
         if (game_over) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
                 game_over = false;
@@ -915,6 +963,7 @@ int main() {
                 player.reset_stats();
                 fire_timer = 0.f;
                 is_bursting = false;
+                bossAttacks.clear();
 
                 if (boss) {
                     delete boss;
@@ -939,8 +988,19 @@ int main() {
             boss->renderBody(window);
             window.draw(boss->sprite);
         }
+        for (auto& attack : bossAttacks) window.draw(attack);
+        for (auto& b : bullets) {
+            b.renderBody(window);
 
-        for (auto& b : bullets) b.renderBody(window);
+            sf::CircleShape debugHitbox(8.f);
+            debugHitbox.setOrigin(8.f, 8.f);
+            debugHitbox.setPosition(b.getX(), b.getY());
+            debugHitbox.setFillColor(sf::Color(255, 0, 0, 150));
+            debugHitbox.setOutlineColor(sf::Color::Green);
+            debugHitbox.setOutlineThickness(1.f);
+
+            window.draw(debugHitbox);
+        }
         player.renderBody(window);
         player.DrawLabelsWithKillsHealth(window);
         if (weapon_spawned) spawnUpgradeChoice(window);
