@@ -19,6 +19,8 @@ float const INITIAL_ATTACK_SPEED = 1.0f;
 
 // --- BASE CLASSES ---
 
+void weaponAvailableInfo(int weaponIndex);
+
 class GameObject {
 protected:
     sf::Shape* body = nullptr;
@@ -285,7 +287,8 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
-        if (this->level % 2 == 0 && weaponsAvailable < 4) {
+        if (this->level % 2 == 0 && weaponsAvailable < 3) {
+            weaponAvailableInfo(weaponsAvailable);
             weaponsAvailable++;
         }
     }
@@ -305,6 +308,7 @@ public:
     }
 
     int getWeaponIndex() const { return this->chosen_weapon; }
+
     void setWeapon(int weaponIndex) { this->chosen_weapon = weaponIndex; }
 
     float shooting_angle(const sf::RenderWindow& window) {
@@ -682,6 +686,74 @@ void spawn_enemy_wave(float total_time, std::vector<Enemy>& enemies, int& wave, 
     }
 }
 
+
+struct WeaponNotification {
+    std::string text;
+    float timer = 0.f;
+    bool active = false;
+};
+
+static WeaponNotification g_weaponNotification;
+
+void weaponAvailableInfo(int weaponIndex) {
+    static const std::vector<std::string> names={"SMG", "Shotgun", "Shotgun+"};
+    static const std::vector<char> button = { 'X', 'C', 'V' };
+    std::string name = "Nowa";
+    if (weaponIndex >= 0 && weaponIndex < static_cast<int>(names.size())) name = names[weaponIndex-1];
+    g_weaponNotification.text = "Bron " + name + " jest dostepna!\n            Nacisnij " + button[weaponIndex-1];
+    g_weaponNotification.timer = 3.0f; 
+    g_weaponNotification.active = true;
+}
+
+void weaponsAvailableInfo(int weaponIndex) {
+    weaponAvailableInfo(weaponIndex);
+}
+
+void renderWeaponNotification(sf::RenderWindow& window, float deltaTime) {
+    if (!g_weaponNotification.active) return;
+    g_weaponNotification.timer -= deltaTime;
+    if (g_weaponNotification.timer <= 0.f) {
+        g_weaponNotification.active = false;
+        return;
+    }
+
+    // Ładuj font raz
+    static sf::Font font;
+    static bool fontLoaded = false;
+    if (!fontLoaded) {
+        fontLoaded = font.loadFromFile("arial.ttf");
+    }
+
+    // Przygotuj tekst
+    sf::Text text;
+    if (fontLoaded) {
+        text.setFont(font);
+    }
+    text.setString(g_weaponNotification.text);
+    text.setCharacterSize(28);
+    text.setFillColor(sf::Color::White);
+    text.setOutlineColor(sf::Color::Black);
+    text.setOutlineThickness(2.f);
+
+    // Pozycjonowanie: na środku okna
+    sf::FloatRect tb = text.getLocalBounds();
+    text.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
+    text.setPosition(static_cast<float>(WINDOW_WIDTH) / 2.f, static_cast<float>(WINDOW_HEIGHT) / 2.f);
+
+    // Tło (półprzezroczyste)
+    const float padX = 24.f;
+    const float padY = 14.f;
+    sf::RectangleShape bg;
+    bg.setFillColor(sf::Color(0, 0, 0, 160));
+    bg.setSize(sf::Vector2f(tb.width + padX * 2.f, tb.height + padY * 2.f));
+    bg.setOrigin(bg.getSize().x / 2.f, bg.getSize().y / 2.f);
+    bg.setPosition(text.getPosition());
+
+    // Rysuj na wierzchu
+    window.draw(bg);
+    window.draw(text);
+}
+
 int main() {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Survival Game");
@@ -995,6 +1067,9 @@ int main() {
         player.DrawLabelsWithKillsHealth(window);
         if (weapon_spawned) spawnUpgradeChoice(window);
         if (game_over) spawnGameOver(window);
+
+        // --- RENDER NOTIFICATIONS ---
+        if (active) { renderWeaponNotification(window, deltaTime); }
 
         window.display();
     }
