@@ -803,6 +803,7 @@ int main() {
     // CHANGED: Use Pointers for Boss Projectiles
     std::vector<BossProjectile*> bossAttacks;
     float bossAttackTimer = 0.f;
+    bool boss_defeated = false;
 
     sf::Clock clock;
 
@@ -950,6 +951,8 @@ int main() {
                         boss = nullptr;
                         score += 100;
                         player.gainExperience(50);
+
+                        boss_defeated = true;
                     }
                     bulletRemoved = true;
                 }
@@ -1020,6 +1023,7 @@ int main() {
                 player.reset_stats();
                 fire_timer = 0.f;
                 is_bursting = false;
+                boss_defeated = false;
 
                 // CLEANUP PROJECTILES
                 for(auto* proj : bossAttacks) delete proj;
@@ -1038,7 +1042,7 @@ int main() {
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) { player.setMAX_HP(player.getMaxHp()+20.f); player.heal(); weapon_spawned = false; }
             else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num4)) { player.set_attack_speed(player.get_attack_speed() + 0.2f); weapon_spawned = false; }
         }
-        if(!boss && total_time >= 60.f) {
+        if(!boss && total_time >= 60.f && !boss_defeated) {
             boss = new Boss(500.f, 20.f, bossTexture);
 		}
 
