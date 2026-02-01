@@ -223,6 +223,7 @@ private:
     int killsCounter = 0;
 
     sf::Sprite sprite;
+    sf::Sprite weaponSprite;
     sf::Texture texture;
     sf::Vector2i frameSize;
     int numFrames;
@@ -287,7 +288,7 @@ public:
     void levelUp() {
         this->level += 1;
         this->heal();
-        if (this->level % 2 == 0 && weaponsAvailable < 3) {
+        if (this->level % 2 == 0 && weaponsAvailable <= 3) {
             weaponAvailableInfo(weaponsAvailable);
             weaponsAvailable++;
         }
@@ -326,6 +327,12 @@ public:
     void DrawLabelsWithKillsHealth(sf::RenderWindow &window) {
         static sf::Texture healthTex;
         static sf::Texture killsTex;
+		static sf::Texture pistolTex;
+        static sf::Texture smgTex;
+        static sf::Texture shotgunTex;
+        static sf::Texture goldenWeaponTex;
+
+
         static sf::Font font;
         static bool loaded = false;
         if (!loaded) {
@@ -337,14 +344,41 @@ public:
                 sf::Image img; img.create(64, 64, sf::Color::Yellow);
                 killsTex.loadFromImage(img);
             }
+            if(!goldenWeaponTex.loadFromFile("assets/golden_shotgun_icon.png")) {
+                sf::Image img; img.create(64,64,sf::Color::Cyan);
+                goldenWeaponTex.loadFromImage(img);
+			}
+            if (!pistolTex.loadFromFile("assets/pistol_icon.png")) {
+                sf::Image img; img.create(64, 64, sf::Color::Cyan);
+                pistolTex.loadFromImage(img);
+            }
+            if (!shotgunTex.loadFromFile("assets/shotgun_icon.png")) {
+                sf::Image img; img.create(64, 64, sf::Color::Cyan);
+                shotgunTex.loadFromImage(img);
+            }
+            if (!smgTex.loadFromFile("assets/smg_icon.png")) {
+                sf::Image img; img.create(64, 64, sf::Color::Cyan);
+                smgTex.loadFromImage(img);
+            }
             font.loadFromFile("arial.ttf");
             healthTex.setSmooth(true);
             killsTex.setSmooth(true);
             loaded = true;
         }
 
+        
+        
+        switch (this->getWeaponIndex()) {
+        case 0: this->weaponSprite.setTexture(pistolTex); break;
+        case 1: this->weaponSprite.setTexture(smgTex); break;
+        case 2: this->weaponSprite.setTexture(shotgunTex); break;
+        case 3: this->weaponSprite.setTexture(goldenWeaponTex); break;
+        default: this->weaponSprite.setTexture(pistolTex); break;
+        }
         sf::Sprite health_sprite(healthTex);
         sf::Sprite kills_sprite(killsTex);
+        sf::Sprite& weapon_sprite = this->weaponSprite;
+
         const float iconDisplayHeight = 40.f;
         if (healthTex.getSize().y > 0) {
             float s = iconDisplayHeight / static_cast<float>(healthTex.getSize().y);
@@ -354,18 +388,26 @@ public:
             float s = iconDisplayHeight / static_cast<float>(killsTex.getSize().y);
             kills_sprite.setScale(s, s);
         }
+        if (pistolTex.getSize().y > 0) {
+            float s = iconDisplayHeight / static_cast<float>(pistolTex.getSize().y);
+            weapon_sprite.setScale(s, s);
+        }
 
         sf::FloatRect hb = health_sprite.getGlobalBounds();
         sf::FloatRect kb = kills_sprite.getGlobalBounds();
+        sf::FloatRect wb = weapon_sprite.getGlobalBounds();
         const float padding = 140.f;
         const float spacing = 40.f;
         float healthX = static_cast<float>(WINDOW_WIDTH) - padding - hb.width;
         float killsX = healthX - spacing - kb.width;
+		float weaponX = killsX - spacing/2 - wb.width;
         float topY = 5.f;
 
         health_sprite.setPosition(healthX, topY);
         kills_sprite.setPosition(killsX, topY);
+		weapon_sprite.setPosition(weaponX, topY);
 
+        window.draw(weapon_sprite);
         window.draw(health_sprite);
         window.draw(kills_sprite);
 
@@ -696,11 +738,10 @@ struct WeaponNotification {
 static WeaponNotification g_weaponNotification;
 
 void weaponAvailableInfo(int weaponIndex) {
-    static const std::vector<std::string> names={"SMG", "Shotgun", "Shotgun+"};
+    //static const std::vector<std::string> names={"SMG", "Shotgun", "Shotgun+"};
     static const std::vector<char> button = { 'X', 'C', 'V' };
-    std::string name = "Nowa";
-    if (weaponIndex >= 0 && weaponIndex < static_cast<int>(names.size())) name = names[weaponIndex-1];
-    g_weaponNotification.text = "Bron " + name + " jest dostepna!\n            Nacisnij " + button[weaponIndex-1];
+   // std::string name = "Nowa";
+    g_weaponNotification.text = std::string("Nowa bron jest dostepna!\n            Nacisnij")  + button[weaponIndex-1];
     g_weaponNotification.timer = 3.0f; 
     g_weaponNotification.active = true;
 }
