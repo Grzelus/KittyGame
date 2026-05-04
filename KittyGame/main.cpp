@@ -18,7 +18,6 @@ float const INITIAL_ATTACK = 5.f;
 float const INITIAL_ATTACK_SPEED = 1.0f;
 
 // --- BASE CLASSES ---
-
 void weaponAvailableInfo(int weaponIndex);
 
 class GameObject {
@@ -741,7 +740,7 @@ void weaponAvailableInfo(int weaponIndex) {
     //static const std::vector<std::string> names={"SMG", "Shotgun", "Shotgun+"};
     static const std::vector<char> button = { 'X', 'C', 'V' };
    // std::string name = "Nowa";
-    g_weaponNotification.text = std::string("Nowa bron jest dostepna!\n            Nacisnij")  + button[weaponIndex-1];
+    g_weaponNotification.text = std::string("Nowa bron jest dostepna!\n            Nacisnij ")  + button[weaponIndex-1];
     g_weaponNotification.timer = 3.0f; 
     g_weaponNotification.active = true;
 }
